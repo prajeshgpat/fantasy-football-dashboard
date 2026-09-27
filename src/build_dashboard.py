@@ -42,6 +42,20 @@ def _name_key(name: str) -> str:
     return re.sub(r"[^a-z0-9]", "", name.casefold())
 
 
+def defense_rows(dvp: pd.DataFrame) -> list[dict]:
+    """Defense table rows plus who each defense faces next and that offense's key player."""
+    rows = defense.to_json(dvp)
+    opp = rankings.next_opponents().set_index("team")
+    key = defense.key_players().set_index(["team", "position"])["player"]
+    for r in rows:
+        if r["team"] not in opp.index:
+            continue
+        o = opp.loc[r["team"]]
+        r.update(faces=o["opp"], faces_week=int(o["week"]), faces_home=bool(o["home"]),
+                 faces_bye=bool(o["bye"]), faces_player=key.get((o["opp"], r["position"])))
+    return rows
+
+
 def my_lineup(dvp: pd.DataFrame, slot: pd.DataFrame, ranks: pd.DataFrame) -> list[dict]:
     ros = fetch.load_roster(config.SEASON)
     ros = ros.assign(status_order=(ros["status"] != "ACT").astype(int),
@@ -156,7 +170,7 @@ def compute() -> dict[str, object]:
                        for t in config.TEAM_NAMES},
         "PLAYS_DATA": plays,
         "SEPARATION_DATA": separation.to_json(sep),
-        "DEFENSE_DATA": defense.to_json(dvp),
+        "DEFENSE_DATA": defense_rows(dvp),
         "SLOT_DATA": slot_perimeter.to_json(slot),
         "LINEUP_DATA": lineup,
         "XFP_DATA": expected_points.to_json(xfp),

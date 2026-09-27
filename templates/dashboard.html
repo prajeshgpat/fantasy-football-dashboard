@@ -576,6 +576,10 @@ posFilter.def = "QB";
 const renderDef = makeTable($("defTbl"), [
   {key: "rank", label: "Rank", fmt: rankCell},
   {key: "team", label: "Defense", l: 1, fmt: v => `${esc(v)} <span class="muted">${esc(teamName(v))}</span>`},
+  {key: "faces", label: "Faces this week", l: 1, title: "The offense this defense plays next, and that offense's main player at the position shown",
+   fmt: (v, r) => !v ? '<span class="muted">—</span>'
+     : `${r.faces_bye ? '<span class="chip neu">BYE</span> then ' : ""}${r.faces_home ? "vs" : "@"} <b>${esc(v)}</b> <span class="muted">wk ${r.faces_week}</span>` +
+       (r.faces_player ? `<span class="sub">${esc(r.faces_player)}</span>` : "")},
   {key: "fp_pg", label: "FP allowed/G", fmt: f(1)},
   {key: "insight", label: "Funnel insight", l: 1, cls: "wrap", fmt: insightCell},
   {key: "league_fp_pg", label: "League avg", fmt: f(1)},

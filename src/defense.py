@@ -38,6 +38,27 @@ def wr_roles(year: int) -> pd.DataFrame:
     return t.rename(columns={"posteam": "team"})[["team", "player_id", "wr_role", "targets"]]
 
 
+def key_players(year: int = config.SEASON) -> pd.DataFrame:
+    """team, position group -> the offense's main player there this season (by volume):
+    QB by dropbacks, RB by carries + targets, TE by targets, WR1/WR2 by target rank
+    (the combined WR row shows the WR1)."""
+    c = scoring.credits_with_position(year)
+    c = c[c["position"].isin(POSITIONS)]
+    vol = c.groupby(["posteam", "player_id", "full_name", "position"])[["dropbacks", "rush_att", "targets"]].sum()
+    vol = vol.reset_index()
+    vol["volume"] = np.select([vol["position"] == "QB", vol["position"] == "RB"],
+                              [vol["dropbacks"], vol["rush_att"] + vol["targets"]], vol["targets"])
+    top = (vol[vol["position"] != "WR"].sort_values("volume", ascending=False)
+              .drop_duplicates(["posteam", "position"])[["posteam", "position", "full_name"]])
+    wr = wr_roles(year).rename(columns={"team": "posteam"})
+    wr = wr[wr["wr_role"].isin(WR_ROLES)].merge(
+        vol[["posteam", "player_id", "full_name"]], on=["posteam", "player_id"])
+    wr = wr.rename(columns={"wr_role": "position"})[["posteam", "position", "full_name"]]
+    combined = wr[wr["position"] == "WR1"].assign(position="WR")
+    out = pd.concat([top, wr, combined], ignore_index=True)
+    return out.rename(columns={"posteam": "team", "full_name": "player"})
+
+
 def _grouped_credits(year: int) -> pd.DataFrame:
     """Credit rows tagged with `group`: the base position, plus WR1/WR2 copies of WR rows."""
     c = scoring.credits_with_position(year)
