@@ -126,6 +126,10 @@ tr.tier-row td:first-child { background: var(--surface-2); }
 .grid2 h3 { font-size: 14px; margin: 8px 0; }
 @media (max-width: 600px) { header { position: static; } section { padding: 12px; } main { padding: 12px 16px; } }
 @media (max-width: 800px) { .grid2 { grid-template-columns: minmax(0,1fr); } .chart-wrap { height: 320px; } }
+details.note summary { cursor: pointer; }
+details.note[open] summary { margin-bottom: 4px; }
+.wrap { white-space: normal; min-width: 240px; max-width: 320px; text-align: left; }
+.sub { display: block; font-size: 11px; color: var(--text-3); margin-top: 2px; line-height: 1.35; }
 .rank-cell { display: inline-block; min-width: 28px; text-align: center; border-radius: 4px; padding: 0 4px; font-weight: 600; }
 </style>
 </head>
@@ -152,7 +156,7 @@ tr.tier-row td:first-child { background: var(--surface-2); }
 
 <section id="lineup" role="tabpanel">
   <h2>My Lineup — This Week's Matchups</h2>
-  <p class="desc">Your configured roster against each team's next unplayed game. Rank 1 = stingiest defense at the position, 32 = most generous. Teams come from the current roster file, so trades are reflected.</p>
+  <p class="desc">Your configured roster against each team's next unplayed game. Rank 1 = stingiest defense at the position, 32 = most generous; WRs are matched against the opponent's WR1 or WR2 defense based on their role. Funnel shows when the opponent's strengths push volume toward (↑) or away from (↓) the player. Teams come from the current roster file, so trades are reflected.</p>
   <div class="tbl-wrap"><table id="lineupTbl"></table></div>
 </section>
 
@@ -182,8 +186,9 @@ tr.tier-row td:first-child { background: var(--surface-2); }
 
 <section id="defense" role="tabpanel" hidden>
   <h2>Defense vs. Position — Fantasy Points Allowed</h2>
-  <p class="desc">PPR points allowed per game this season. Confidence (0–100) blends sample size, how far the team's 3-year baseline sits from league average, and how much of the damage came from top-12 players.</p>
-  <div class="controls"><span class="seg" data-posfilter="def" data-positions="QB,RB,WR,TE"></span></div>
+  <p class="desc">PPR points allowed per game this season. Confidence (0–100) blends sample size, how far the team's 3-year baseline sits from league average, and how much of the damage came from top-12 players. WR1 / WR2 split each offense's receivers by their season targets for that team, so a defense that shuts down No. 1 receivers but leaks to No. 2s shows up.</p>
+  <details class="note"><summary><b>How funnel calls work</b></summary>A defense that is stout at one spot pushes volume elsewhere. <b>Pass funnel</b>: tough vs RBs, soft vs WR/TE, so offenses throw more. <b>Run funnel</b>: tough vs WRs, soft vs RBs, so offenses run more. <b>TE funnel</b>: WRs blanketed, TEs soft, so targets go underneath. <b>Strong</b> means offenses actually changed behavior here (pass rate or TE target share vs their own norm in neutral game script); <b>Lean</b> means the points split exists but behavior hasn't moved yet. Calls are dropped when offenses do the opposite. Early in the season a single blowout can swing these, so check the G and Confidence columns.</details>
+  <div class="controls"><span class="seg" data-posfilter="def" data-positions="QB,RB,WR,WR1,WR2,TE"></span><label><input type="checkbox" id="defFunnelOnly"> Funnels only</label></div>
   <div class="tbl-wrap"><table id="defTbl"></table></div>
 </section>
 
@@ -318,7 +323,7 @@ function makeTable(el, cols, getRows, opts = {}) {
         const g = r[opts.groupBy];
         if (g !== lastGroup) { body += `<tr class="tier-row"><td colspan="${cols.length}">${esc(g)}</td></tr>`; lastGroup = g; }
       }
-      body += "<tr>" + cols.map(c => `<td class="${c.l ? "l" : ""}">${c.fmt ? c.fmt(r[c.key], r) : esc(r[c.key])}</td>`).join("") + "</tr>";
+      body += "<tr>" + cols.map(c => `<td class="${c.l ? "l " : ""}${c.cls || ""}">${c.fmt ? c.fmt(r[c.key], r) : esc(r[c.key])}</td>`).join("") + "</tr>";
     }
     el.innerHTML = head + "<tbody>" + (body || `<tr><td colspan="${cols.length}" class="muted">No rows</td></tr>`) + "</tbody>";
     el.querySelectorAll("th[data-key]").forEach(th => th.onclick = () => {
@@ -479,7 +484,8 @@ function posDatasets(rows, positions, toPoint) {
 // ---------- 5.5 lineup ----------
 makeTable($("lineupTbl"), [
   {key: "name", label: "Player", l: 1},
-  {key: "position", label: "Pos", fmt: posBadge},
+  {key: "position", label: "Pos", fmt: (v, r) => posBadge(v) + (r.matchup_group && r.matchup_group !== v
+    ? ` <span class="muted" title="Matched against the opponent's ${r.matchup_group} defense">${r.matchup_group}</span>` : "")},
   {key: "opp", label: "Opp", l: 1, fmt: (v, r) => r.bye ? `<span class="chip neu">BYE</span> then ${r.home ? "vs" : "@"} ${esc(v)} (wk ${r.week})`
     : v ? `${r.home ? "vs" : "@"} ${esc(v)} <span class="muted">wk ${r.week}</span>` : "—"},
   {key: "read", label: "Read", l: 1, fmt: v => {
@@ -487,8 +493,9 @@ makeTable($("lineupTbl"), [
     const cls = v.startsWith("Plus") ? "good" : v.startsWith("Tough") ? "bad" : "neu";
     return `<span class="chip ${cls}">${esc(v)}</span>`;
   }},
-  {key: "opp_rank", label: "Opp rank", fmt: rankCell, title: "Opponent's rank at this position (1 = stingiest, 32 = most generous)"},
+  {key: "opp_rank", label: "Opp rank", fmt: rankCell, title: "Opponent's rank vs this position (WRs: vs WR1s or WR2s by the player's role). 1 = stingiest, 32 = most generous"},
   {key: "proj_pts", label: "Proj", fmt: f(1)},
+  {key: "insight", label: "Funnel", l: 1, cls: "wrap", fmt: insightCell},
   {key: "team", label: "Team"},
   {key: "status", label: "Status", fmt: v => v === "ACT" ? "ACT" : `<span class="chip bad">${esc(v || "—")}</span>`},
   {key: "opp_fp_pg", label: "Opp FP/G", fmt: f(1)},
@@ -557,18 +564,33 @@ $("sepFlagged").onchange = renderSep;
 onPos("sep", () => { drawChart("sepChart"); renderSep(); });
 
 // ---------- 5.3 defense ----------
+// Funnel chip: green = volume funnels toward this position, red = away, grey = indirect effect.
+function insightCell(text, r, detailKey = "insight_detail") {
+  if (!text) return '<span class="muted">—</span>';
+  const tone = r.insight_tone === "up" ? "good" : r.insight_tone === "down" ? "bad" : "neu";
+  const arrow = r.insight_tone === "up" ? "↑ " : r.insight_tone === "down" ? "↓ " : "";
+  return `<span class="chip ${tone}">${arrow}${esc(text)}</span> ${esc(r.insight_effect || "")}` +
+    `<span class="sub">${esc(r[detailKey] || "")}</span>`;
+}
 posFilter.def = "QB";
 const renderDef = makeTable($("defTbl"), [
   {key: "rank", label: "Rank", fmt: rankCell},
   {key: "team", label: "Defense", l: 1, fmt: v => `${esc(v)} <span class="muted">${esc(teamName(v))}</span>`},
   {key: "fp_pg", label: "FP allowed/G", fmt: f(1)},
+  {key: "insight", label: "Funnel insight", l: 1, cls: "wrap", fmt: insightCell},
   {key: "league_fp_pg", label: "League avg", fmt: f(1)},
   {key: "baseline_fp_pg", label: "3-yr baseline", fmt: f(1), title: "50/30/20 blend of prior three seasons"},
   {key: "games", label: "G"},
   {key: "elite_ratio", label: "Top-12 share", fmt: pct(0), title: "Share of FP allowed that went to top-12 players at the position"},
   {key: "confidence", label: "Confidence", fmt: v => `<span class="${v < META.low_confidence ? "muted" : ""}">${v.toFixed(0)}</span>`},
-], () => DEF.filter(r => r.position === posFilter.def), {sortKey: "rank", sortDir: 1});
+  {key: "pass_rate_oe", label: "Opp pass rate Δ", fmt: v => v == null ? '<span class="muted">—</span>' : signed(0)(v * 100) + "%",
+   title: "Opponents' pass rate vs their own norm in other games, neutral game script (win prob 20–80%)"},
+  {key: "te_share_oe", label: "Opp TE tgt share Δ", fmt: v => v == null ? '<span class="muted">—</span>' : signed(0)(v * 100) + "%",
+   title: "Opponents' TE share of targets vs their own norm in other games"},
+], () => DEF.filter(r => r.position === posFilter.def && (!$("defFunnelOnly").checked || r.insight)),
+   {sortKey: "rank", sortDir: 1});
 onPos("def", renderDef);
+$("defFunnelOnly").onchange = renderDef;
 
 // ---------- 5.4 slot/perimeter ----------
 scatter("slotChart", () => ({

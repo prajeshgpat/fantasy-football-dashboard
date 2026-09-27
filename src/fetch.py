@@ -26,7 +26,7 @@ PBP_COLUMNS = [
     "pass_attempt", "rush_attempt", "complete_pass", "sack", "qb_dropback", "qb_scramble",
     "passing_yards", "rushing_yards", "receiving_yards",
     "pass_touchdown", "rush_touchdown", "interception",
-    "fumble_lost", "fumbled_1_player_id",
+    "fumble_lost", "fumbled_1_player_id", "wp",
 ]
 
 
@@ -58,11 +58,14 @@ def _download(tag: str, filename: str, refresh: bool = False) -> Path:
     return dest
 
 
-def _cached(name: str, build) -> pd.DataFrame:
-    """Pickle-cache a parsed frame so repeated builds skip the slow CSV parse."""
+def _cached(name: str, build, required: list[str] | None = None) -> pd.DataFrame:
+    """Pickle-cache a parsed frame so repeated builds skip the slow CSV parse.
+    A cache missing any `required` column (written by an older version) is rebuilt."""
     pkl = DATA_DIR / f"{name}.pkl"
     if pkl.exists():
-        return pd.read_pickle(pkl)
+        df = pd.read_pickle(pkl)
+        if not required or set(required) <= set(df.columns):
+            return df
     df = build()
     df.to_pickle(pkl)
     return df
@@ -74,7 +77,7 @@ def load_pbp(year: int) -> pd.DataFrame:
         path = _download("pbp", f"play_by_play_{year}.csv.gz")
         df = pd.read_csv(path, usecols=lambda c: c in PBP_COLUMNS, low_memory=False)
         return df[df["season_type"] == "REG"].reset_index(drop=True)
-    return _cached(f"pbp_{year}", build)
+    return _cached(f"pbp_{year}", build, required=PBP_COLUMNS)
 
 
 def load_roster(year: int) -> pd.DataFrame:

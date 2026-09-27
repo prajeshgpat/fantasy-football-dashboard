@@ -66,7 +66,7 @@ data/                      gitignored cache (all re-downloadable)
 | My Lineup | Each rostered player's next opponent, that defense's rank/confidence at the position, slot tendency, and a Plus / Tough / Neutral read ("low confidence" when confidence < 45). |
 | Offensive plays per game | Pass + run plays per game, current vs prior season. |
 | Separation vs targets per route | NGS `avg_separation` vs true TPRR (prior season, from `pbp_participation`, min 50 routes) or a targets ÷ snaps proxy (current season). Flags ±1.0 yd separation swings and +50% / −30% target-rate swings. |
-| Defense vs position | FP allowed per game, rank (1 = stingiest), 3-year baseline, confidence score. |
+| Defense vs position | FP allowed per game, rank (1 = stingiest), 3-year baseline, confidence score, split QB / RB / WR / WR1 / WR2 / TE, plus a funnel insight per defense. |
 | Slot vs perimeter | WR+TE points allowed by `pass_location` (middle vs left/right) — a proxy, read relatively. |
 | Expected vs actual FP | xFP calibrated on the last completed season; negative delta = buy-low, positive = regression risk. |
 | Red zone | Targets/carries inside the 20 and 10, TDs, and TD-regression candidates. |
@@ -80,6 +80,18 @@ data/                      gitignored cache (all re-downloadable)
 - **Confidence** is a weighted average (25% sample, 45% baseline gap, 30%
   concentration), not a product — the multiplicative version crushes every
   small-sample score under ~33.
+- **WR1 / WR2:** each offense's WRs are ranked by their targets for that team
+  in that season (most = WR1, next = WR2). Defense ranks are computed for each
+  role, and My Lineup matches a rostered WR against the opponent's row for his
+  role. Top-200 rankings still use the combined WR row.
+- **Funnel insight:** a defense is flagged when it is stout at one spot (top 12)
+  and soft at another (bottom half) with at least a 25% gap in FP allowed vs
+  league average. Pass funnel = tough vs RB, soft vs WR/TE; run funnel = tough
+  vs WR, soft vs RB; TE funnel = tough vs WR, soft vs TE. The call is "Strong"
+  when offenses actually changed behavior against that defense (pass rate or TE
+  target share at least 3 points off their own norm in other games, neutral game
+  script: win probability 20-80%), "Lean" when behavior hasn't moved, and it is
+  dropped when offenses did the opposite.
 - **Baselines** are 3-year recency-weighted (50/30/20) over the prior three
   seasons, renormalised when a season is missing.
 - **Rankings** include only roster `status == "ACT"` players. QBs are limited

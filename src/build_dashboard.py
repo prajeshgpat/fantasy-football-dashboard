@@ -49,6 +49,8 @@ def my_lineup(dvp: pd.DataFrame, slot: pd.DataFrame, ranks: pd.DataFrame) -> lis
     ros = ros.sort_values(["status_order", "week"], ascending=[True, False])
     opp = rankings.next_opponents().set_index("team")
     tend = slot.set_index("team")["tendency"]
+    # WRs are matched against the opponent's WR1 or WR2 row when the player holds that role.
+    roles = defense.wr_roles(config.SEASON).set_index(["team", "player_id"])["wr_role"]
     dvp_ix = dvp.set_index(["team", "position"])
     proj = ranks.set_index("player_id")[["rank", "proj_pts"]]
     rows = []
@@ -63,10 +65,19 @@ def my_lineup(dvp: pd.DataFrame, slot: pd.DataFrame, ranks: pd.DataFrame) -> lis
         if p["team"] in opp.index:
             o = opp.loc[p["team"]]
             row.update(opp=o["opp"], week=int(o["week"]), home=bool(o["home"]), bye=bool(o["bye"]))
-            if (o["opp"], pos) in dvp_ix.index:
-                d = dvp_ix.loc[(o["opp"], pos)]
+            group = pos
+            if pos == "WR":
+                role = roles.get((p["team"], p["gsis_id"]))
+                if role in defense.WR_ROLES and (o["opp"], role) in dvp_ix.index:
+                    group = role
+            row["matchup_group"] = group
+            if (o["opp"], group) in dvp_ix.index:
+                d = dvp_ix.loc[(o["opp"], group)]
                 row.update(opp_rank=int(d["rank"]), opp_confidence=float(d["confidence"]),
-                           opp_fp_pg=float(d["fp_pg"]))
+                           opp_fp_pg=float(d["fp_pg"]), insight=d["insight"] or None,
+                           insight_tone=d["insight_tone"] or None,
+                           insight_effect=d["insight_effect"] or None,
+                           insight_detail=d["insight_detail"] or None)
                 if pos in ("WR", "TE"):
                     row["opp_slot"] = tend.get(o["opp"])
                 read = ("Plus matchup" if d["rank"] >= PLUS_RANK
