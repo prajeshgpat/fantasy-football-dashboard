@@ -27,7 +27,8 @@ python -m src.build_dashboard    # compute every section, write dashboard.html
 ```
 
 `build_dashboard` accepts an optional output path
-(`python -m src.build_dashboard site/index.html`).
+(`python -m src.build_dashboard site/index.html`). `--fragment` drops the
+`<html>/<head>/<body>` wrapper, for hosts that add their own page skeleton.
 
 **Weekly refresh:** re-run both. `src.fetch` drops the cached current-season
 files (pbp, roster, snap counts, schedule, NGS) before re-downloading; prior

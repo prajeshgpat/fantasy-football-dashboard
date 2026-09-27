@@ -51,7 +51,7 @@ body {
   font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 header {
-  position: sticky; top: 0; z-index: 10; background: var(--surface);
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface);
   border-bottom: 1px solid var(--border); padding: 10px 16px;
 }
 .hdr { max-width: 1200px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
@@ -97,6 +97,13 @@ th[data-key]:hover { color: var(--text); }
 th.asc::after { content: " ▲"; font-size: 9px; }
 th.desc::after { content: " ▼"; font-size: 9px; }
 tbody tr:hover { background: var(--surface-2); }
+/* Keep the name column visible while scrolling a wide table sideways on phones. */
+td:first-child, th:first-child { position: sticky; left: 0; background: var(--surface); z-index: 1; }
+thead th:first-child { background: var(--surface-2); z-index: 2; }
+#rankTbl td:nth-child(2), #rankTbl th:nth-child(2) { position: sticky; left: 0; background: var(--surface); }
+#rankTbl td:first-child, #rankTbl th:first-child { position: static; }
+#rankTbl thead th:nth-child(2) { background: var(--surface-2); z-index: 2; }
+tr.tier-row td:first-child { background: var(--surface-2); }
 .pos { display: inline-block; min-width: 26px; text-align: center; font-size: 11px; font-weight: 600; border-radius: 4px; padding: 0 4px; color: #fff; background: var(--c); }
 .chip { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px; }
 .chip.good { background: var(--good-bg); color: var(--good); }
@@ -108,6 +115,7 @@ tbody tr:hover { background: var(--surface-2); }
 .grid2 { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 16px; }
 .grid2 > div { min-width: 0; }
 .grid2 h3 { font-size: 14px; margin: 8px 0; }
+@media (max-width: 600px) { header { position: static; } section { scroll-margin-top: 8px; padding: 12px; } main { padding: 12px 16px; } }
 @media (max-width: 800px) { .grid2 { grid-template-columns: minmax(0,1fr); } .chart-wrap { height: 320px; } }
 .rank-cell { display: inline-block; min-width: 28px; text-align: center; border-radius: 4px; padding: 0 4px; font-weight: 600; }
 </style>
@@ -457,21 +465,21 @@ function posDatasets(rows, positions, toPoint) {
 makeTable($("lineupTbl"), [
   {key: "name", label: "Player", l: 1},
   {key: "position", label: "Pos", fmt: posBadge},
-  {key: "team", label: "Team"},
-  {key: "status", label: "Status", fmt: v => v === "ACT" ? "ACT" : `<span class="chip bad">${esc(v || "—")}</span>`},
   {key: "opp", label: "Opp", l: 1, fmt: (v, r) => r.bye ? `<span class="chip neu">BYE</span> then ${r.home ? "vs" : "@"} ${esc(v)} (wk ${r.week})`
     : v ? `${r.home ? "vs" : "@"} ${esc(v)} <span class="muted">wk ${r.week}</span>` : "—"},
-  {key: "opp_rank", label: "Opp rank", fmt: rankCell, title: "Opponent's rank at this position (1 = stingiest, 32 = most generous)"},
-  {key: "opp_fp_pg", label: "Opp FP/G", fmt: f(1)},
-  {key: "opp_confidence", label: "Conf", fmt: v => v == null ? "—" : `<span class="${v < META.low_confidence ? "muted" : ""}">${v.toFixed(0)}</span>`},
-  {key: "opp_slot", label: "Opp slot tendency", l: 1, fmt: v => v ? esc(v) : '<span class="muted">—</span>'},
-  {key: "ovr_rank", label: "Ovr rank", fmt: v => v ?? '<span class="muted">—</span>'},
-  {key: "proj_pts", label: "Proj", fmt: f(1)},
   {key: "read", label: "Read", l: 1, fmt: v => {
     if (!v) return "—";
     const cls = v.startsWith("Plus") ? "good" : v.startsWith("Tough") ? "bad" : "neu";
     return `<span class="chip ${cls}">${esc(v)}</span>`;
   }},
+  {key: "opp_rank", label: "Opp rank", fmt: rankCell, title: "Opponent's rank at this position (1 = stingiest, 32 = most generous)"},
+  {key: "proj_pts", label: "Proj", fmt: f(1)},
+  {key: "team", label: "Team"},
+  {key: "status", label: "Status", fmt: v => v === "ACT" ? "ACT" : `<span class="chip bad">${esc(v || "—")}</span>`},
+  {key: "opp_fp_pg", label: "Opp FP/G", fmt: f(1)},
+  {key: "opp_confidence", label: "Conf", fmt: v => v == null ? "—" : `<span class="${v < META.low_confidence ? "muted" : ""}">${v.toFixed(0)}</span>`},
+  {key: "opp_slot", label: "Opp slot tendency", l: 1, fmt: v => v ? esc(v) : '<span class="muted">—</span>'},
+  {key: "ovr_rank", label: "Ovr rank", fmt: v => v ?? '<span class="muted">—</span>'},
 ], () => LINEUP);
 
 // ---------- 5.1 plays per game ----------

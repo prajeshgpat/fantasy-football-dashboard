@@ -157,16 +157,29 @@ def compute() -> dict[str, object]:
     }
 
 
-def build(output: Path | None = None) -> Path:
+def to_fragment(html: str) -> str:
+    """Strip the document wrapper (doctype/html/head/body) for hosts that supply
+    their own skeleton, keeping <title>, <style> and <script> tags in order."""
+    html = re.sub(r"<!doctype[^>]*>|</?html[^>]*>|</?head>|</?body>|<meta [^>]*>", "", html, flags=re.I)
+    return html.strip() + "\n"
+
+
+def build(output: Path | None = None, fragment: bool = False) -> Path:
     output = output or ROOT / config.OUTPUT_HTML
     html = TEMPLATE.read_text(encoding="utf-8")
     for token, data in compute().items():
         html = html.replace("{{" + token + "}}", to_js(data))
     check_balanced(html)
+    if fragment:
+        html = to_fragment(html)
     output.write_text(html, encoding="utf-8")
     print(f"wrote {output} ({output.stat().st_size / 1024:.0f} KB)", file=sys.stderr)
     return output
 
 
 if __name__ == "__main__":
-    build(Path(sys.argv[1]) if len(sys.argv) > 1 else None)
+    # usage: python -m src.build_dashboard [--fragment] [output.html]
+    args = sys.argv[1:]
+    frag = "--fragment" in args
+    paths = [a for a in args if a != "--fragment"]
+    build(Path(paths[0]) if paths else None, fragment=frag)
