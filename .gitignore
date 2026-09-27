@@ -1,0 +1,8 @@
+data/
+*.pkl
+*.parquet
+*.csv
+*.csv.gz
+__pycache__/
+.venv/
+.DS_Store

@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fantasy Football Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-zoom/2.0.1/chartjs-plugin-zoom.min.js"></script>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f4f4f1;
+  --surface: #fcfcfb;
+  --surface-2: #f0efec;
+  --border: #e2e1dc;
+  --text: #0b0b0b;
+  --text-2: #52514e;
+  --text-3: #7a7974;
+  --grid: rgba(0,0,0,.07);
+  --accent: #2a78d6;
+  --pos-qb: #2a78d6; --pos-rb: #eb6834; --pos-wr: #1baf7a; --pos-te: #4a3aa7;
+  --good: #1a7f37; --good-bg: #e3f3e6;
+  --bad: #c0362c;  --bad-bg: #fbe7e5;
+  --neutral-bg: #f0efec;
+  --div-lo: #2a78d6; --div-hi: #e34948;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #121211; --surface: #1a1a19; --surface-2: #232321; --border: #33332f;
+    --text: #ffffff; --text-2: #c3c2b7; --text-3: #8f8e86; --grid: rgba(255,255,255,.08);
+    --accent: #3987e5;
+    --pos-qb: #3987e5; --pos-rb: #d95926; --pos-wr: #199e70; --pos-te: #9085e9;
+    --good: #5cc275; --good-bg: #173a22; --bad: #ff7b72; --bad-bg: #44201d; --neutral-bg: #383835;
+    --div-lo: #3987e5; --div-hi: #e66767;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #121211; --surface: #1a1a19; --surface-2: #232321; --border: #33332f;
+  --text: #ffffff; --text-2: #c3c2b7; --text-3: #8f8e86; --grid: rgba(255,255,255,.08);
+  --accent: #3987e5;
+  --pos-qb: #3987e5; --pos-rb: #d95926; --pos-wr: #199e70; --pos-te: #9085e9;
+  --good: #5cc275; --good-bg: #173a22; --bad: #ff7b72; --bad-bg: #44201d; --neutral-bg: #383835;
+  --div-lo: #3987e5; --div-hi: #e66767;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+header {
+  position: sticky; top: 0; z-index: 10; background: var(--surface);
+  border-bottom: 1px solid var(--border); padding: 10px 16px;
+}
+.hdr { max-width: 1200px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+.hdr h1 { font-size: 17px; margin: 0; }
+.hdr .meta { color: var(--text-2); font-size: 12px; }
+.hdr nav { display: flex; gap: 4px; flex-wrap: wrap; width: 100%; }
+.hdr nav a { color: var(--text-2); text-decoration: none; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); }
+.hdr nav a:hover { color: var(--text); }
+#themeBtn { margin-left: auto; }
+main { max-width: 1200px; margin: 0 auto; padding: 16px; }
+section {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 16px; margin-bottom: 16px; scroll-margin-top: 110px;
+}
+section h2 { margin: 0 0 4px; font-size: 16px; }
+.desc { color: var(--text-2); margin: 0 0 10px; max-width: 80ch; }
+.note { color: var(--text-2); font-size: 12px; border-left: 3px solid var(--border); padding: 4px 10px; margin: 8px 0; background: var(--surface-2); border-radius: 0 6px 6px 0; }
+.controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
+button, select, input[type=search] {
+  font: inherit; font-size: 13px; color: var(--text); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; cursor: pointer;
+}
+input[type=search] { cursor: text; min-width: 180px; }
+button.on { background: var(--text); color: var(--surface); border-color: var(--text); }
+.seg { display: inline-flex; gap: 0; }
+.seg button { border-radius: 0; margin-left: -1px; }
+.seg button:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
+.seg button:last-child { border-radius: 0 6px 6px 0; }
+.chart-wrap { position: relative; height: 420px; margin: 8px 0; }
+.chart-wrap canvas { cursor: grab; }
+.legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--text-2); }
+.legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 5px; vertical-align: -1px; background: var(--c); }
+.legend span.tri::before { clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.legend span.dot::before { border-radius: 50%; }
+.legend span.dia::before { transform: rotate(45deg) scale(.85); }
+.tbl-wrap { overflow-x: auto; max-height: 520px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+th, td { padding: 5px 8px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--border); }
+th:first-child, td:first-child, th.l, td.l { text-align: left; }
+thead th { position: sticky; top: 0; background: var(--surface-2); color: var(--text-2); font-weight: 600; font-size: 12px; z-index: 1; }
+th[data-key] { cursor: pointer; user-select: none; }
+th[data-key]:hover { color: var(--text); }
+th.asc::after { content: " ▲"; font-size: 9px; }
+th.desc::after { content: " ▼"; font-size: 9px; }
+tbody tr:hover { background: var(--surface-2); }
+.pos { display: inline-block; min-width: 26px; text-align: center; font-size: 11px; font-weight: 600; border-radius: 4px; padding: 0 4px; color: #fff; background: var(--c); }
+.chip { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px; }
+.chip.good { background: var(--good-bg); color: var(--good); }
+.chip.bad { background: var(--bad-bg); color: var(--bad); }
+.chip.neu { background: var(--neutral-bg); color: var(--text-2); }
+.pos-num { color: var(--good); } .neg-num { color: var(--bad); }
+.muted { color: var(--text-3); }
+.tier-row td { background: var(--surface-2); font-weight: 600; text-align: left; color: var(--text-2); font-size: 12px; }
+.grid2 { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 16px; }
+.grid2 > div { min-width: 0; }
+.grid2 h3 { font-size: 14px; margin: 8px 0; }
+@media (max-width: 800px) { .grid2 { grid-template-columns: minmax(0,1fr); } .chart-wrap { height: 320px; } }
+.rank-cell { display: inline-block; min-width: 28px; text-align: center; border-radius: 4px; padding: 0 4px; font-weight: 600; }
+</style>
+</head>
+<body>
+<header>
+  <div class="hdr">
+    <h1>Fantasy Football Dashboard</h1>
+    <span class="meta" id="meta"></span>
+    <button id="themeBtn" title="Toggle light/dark">Theme</button>
+    <nav>
+      <a href="#plays">Plays/G</a><a href="#separation">Separation</a><a href="#defense">Def vs Pos</a>
+      <a href="#slot">Slot vs Perim</a><a href="#lineup">My Lineup</a><a href="#xfp">xFP</a>
+      <a href="#redzone">Red Zone</a><a href="#skill">CPOE/RYOE</a><a href="#rankings">Top 200</a>
+    </nav>
+  </div>
+</header>
+<main>
+
+<section id="lineup">
+  <h2>My Lineup — This Week's Matchups</h2>
+  <p class="desc">Your configured roster against each team's next unplayed game. Rank 1 = stingiest defense at the position, 32 = most generous. Teams come from the current roster file, so trades are reflected.</p>
+  <div class="tbl-wrap"><table id="lineupTbl"></table></div>
+</section>
+
+<section id="plays">
+  <h2>Offensive Plays Per Game</h2>
+  <p class="desc">Pass + run plays per game, regular season, special teams excluded. Points above the dashed line are running more plays than last season.</p>
+  <div class="controls"><button data-reset="playsChart">Reset zoom</button></div>
+  <div class="chart-wrap"><canvas id="playsChart" aria-label="Scatter of plays per game, prior season vs current season, by team"></canvas></div>
+  <div class="tbl-wrap"><table id="playsTbl"></table></div>
+</section>
+
+<section id="separation">
+  <h2>WR/TE Separation vs. Targets Per Route</h2>
+  <p class="desc">X = NGS average separation (yards). Y = targets per route run (prior season) or targets per offensive snap (current season proxy).</p>
+  <div class="note">NGS <code>avg_separation</code> is tracking-derived (yards from nearest defender). It is <b>not</b> Fantasy Points' proprietary "Average Separation Score," which is human-charted video review and is not derivable from any public dataset.</div>
+  <div class="note" id="sepNote"></div>
+  <div class="controls">
+    <span class="seg" id="sepSeason"><button data-v="cur" class="on">Current (targets ÷ snaps proxy)</button><button data-v="prior">Prior (true TPRR)</button></span>
+    <span class="seg" data-posfilter="sep" data-positions="All,WR,TE"></span>
+    <button data-reset="sepChart">Reset zoom</button>
+  </div>
+  <div class="legend" data-legend="WR,TE"></div>
+  <div class="chart-wrap"><canvas id="sepChart" aria-label="Scatter of separation vs target rate"></canvas></div>
+  <div class="controls"><label><input type="checkbox" id="sepFlagged"> Flagged only</label></div>
+  <div class="tbl-wrap"><table id="sepTbl"></table></div>
+</section>
+
+<section id="defense">
+  <h2>Defense vs. Position — Fantasy Points Allowed</h2>
+  <p class="desc">PPR points allowed per game this season. Confidence (0–100) blends sample size, how far the team's 3-year baseline sits from league average, and how much of the damage came from top-12 players.</p>
+  <div class="controls"><span class="seg" data-posfilter="def" data-positions="QB,RB,WR,TE"></span></div>
+  <div class="tbl-wrap"><table id="defTbl"></table></div>
+</section>
+
+<section id="slot">
+  <h2>Slot/Middle vs. Perimeter FP Allowed (proxy)</h2>
+  <p class="desc">WR + TE receiving points allowed per game, split by <code>pass_location</code>: middle → slot/middle, left/right → perimeter.</p>
+  <div class="note">nflverse publishes no verified WR alignment in-season, so this is an approximation. Every team skews toward perimeter because perimeter volume is higher league-wide — read teams relative to each other, not in absolute terms.</div>
+  <div class="controls"><button data-reset="slotChart">Reset zoom</button></div>
+  <div class="chart-wrap"><canvas id="slotChart" aria-label="Scatter of perimeter vs slot FP allowed by defense"></canvas></div>
+  <div class="tbl-wrap"><table id="slotTbl"></table></div>
+</section>
+
+<section id="xfp">
+  <h2>Expected vs. Actual Fantasy Points</h2>
+  <p class="desc">xFP from targets (by air-yards bucket) and carries (by field position), calibrated on the last completed season. Below the line = underperforming opportunity (buy-low); above = regression candidate. Rushing + receiving points only.</p>
+  <div class="controls"><span class="seg" data-posfilter="xfp" data-positions="All,RB,WR,TE"></span><button data-reset="xfpChart">Reset zoom</button></div>
+  <div class="legend" data-legend="RB,WR,TE"></div>
+  <div class="chart-wrap"><canvas id="xfpChart" aria-label="Scatter of expected vs actual fantasy points"></canvas></div>
+  <div class="tbl-wrap"><table id="xfpTbl"></table></div>
+</section>
+
+<section id="redzone">
+  <h2>Red Zone Opportunity</h2>
+  <p class="desc">Targets and carries inside the 20 and inside the 10, plus touchdowns. High opportunity with zero TDs flags a positive TD-regression candidate.</p>
+  <div class="controls"><span class="seg" data-posfilter="rz" data-positions="All,QB,RB,WR,TE"></span></div>
+  <div class="tbl-wrap"><table id="rzTbl"></table></div>
+</section>
+
+<section id="skill">
+  <h2>CPOE &amp; RYOE</h2>
+  <p class="desc">NGS season-to-date aggregates. A high CPOE on a short aDOT reads differently from the same CPOE on deep throws.</p>
+  <div class="controls"><button data-reset="cpoeChart">Reset zoom</button></div>
+  <div class="chart-wrap"><canvas id="cpoeChart" aria-label="Scatter of aDOT vs CPOE"></canvas></div>
+  <div class="grid2">
+    <div><h3>Passing — CPOE</h3><div class="tbl-wrap"><table id="cpoeTbl"></table></div></div>
+    <div><h3>Rushing — RYOE</h3><div class="tbl-wrap"><table id="ryoeTbl"></table></div></div>
+  </div>
+</section>
+
+<section id="rankings">
+  <h2>Top 200 Tiered Rankings</h2>
+  <p class="desc">Projected points = skill PPG (3-year baseline blended with this season, damped by volume) × matchup multiplier (opponent FP allowed vs. league, shrunk toward neutral by confidence, clipped 0.75–1.30). Active players only; QBs are team starters only.</p>
+  <div class="note">Ranks by raw projected points. Not adjusted for positional scarcity — a QB-heavy top 12 is expected under standard scoring and is not draft advice.</div>
+  <div class="controls">
+    <span class="seg" data-posfilter="rank" data-positions="All,QB,RB,WR,TE"></span>
+    <input type="search" id="rankSearch" placeholder="Search player or team">
+  </div>
+  <div class="tbl-wrap" style="max-height:720px"><table id="rankTbl"></table></div>
+  <div class="note" id="gapsNote"></div>
+</section>
+
+</main>
+<script>
+const META = {{META}};
+const TEAMS = {{TEAMS_DATA}};
+const PLAYS = {{PLAYS_DATA}};
+const SEP = {{SEPARATION_DATA}};
+const DEF = {{DEFENSE_DATA}};
+const SLOT = {{SLOT_DATA}};
+const LINEUP = {{LINEUP_DATA}};
+const XFP = {{XFP_DATA}};
+const RZ = {{REDZONE_DATA}};
+const CPOE = {{CPOE_DATA}};
+const RYOE = {{RYOE_DATA}};
+const RANKS = {{RANKINGS_DATA}};
+const GAPS = {{GAPS_DATA}};
+</script>
+<script>
+(() => {
+"use strict";
+const HAS_CHART = typeof window.Chart !== "undefined";
+if (HAS_CHART && window.ChartZoom) { try { Chart.register(window.ChartZoom); } catch (e) {} }
+
+// ---------- theme ----------
+const root = document.documentElement;
+try { const t = localStorage.getItem("ffd-theme"); if (t) root.dataset.theme = t; } catch (e) {}
+const css = name => getComputedStyle(root).getPropertyValue(name).trim();
+const isDark = () => root.dataset.theme ? root.dataset.theme === "dark"
+  : matchMedia("(prefers-color-scheme: dark)").matches;
+document.getElementById("themeBtn").onclick = () => {
+  root.dataset.theme = isDark() ? "light" : "dark";
+  try { localStorage.setItem("ffd-theme", root.dataset.theme); } catch (e) {}
+  redrawCharts();
+};
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => redrawCharts());
+
+// ---------- helpers ----------
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const f = d => v => v == null ? '<span class="muted">—</span>' : Number(v).toFixed(d);
+const pct = d => v => v == null ? '<span class="muted">—</span>' : (v * 100).toFixed(d) + "%";
+const signed = d => v => v == null ? '<span class="muted">—</span>'
+  : `<span class="${v > 0 ? "pos-num" : v < 0 ? "neg-num" : ""}">${v > 0 ? "+" : ""}${Number(v).toFixed(d)}</span>`;
+const POS_VAR = {QB: "--pos-qb", RB: "--pos-rb", WR: "--pos-wr", TE: "--pos-te"};
+const POS_SHAPE = {QB: "circle", RB: "triangle", WR: "rect", TE: "rectRot"};
+const posColor = p => css(POS_VAR[p] || "--text-3");
+const posBadge = p => p ? `<span class="pos" style="--c:var(${POS_VAR[p] || "--text-3"})">${p}</span>` : "";
+const teamName = t => TEAMS[t] ? TEAMS[t].name : t;
+
+$("meta").textContent = `${META.season} season · data through week ${META.through_week}` +
+  (META.next_week ? ` · next: week ${META.next_week}` : "") + ` · ${META.league_size}-team ${META.scoring} · built ${META.generated}`;
+
+// Diverging chip for a 1..32 defensive rank (1 = stingy/blue, 32 = generous/red).
+function rankCell(r) {
+  if (r == null) return '<span class="muted">—</span>';
+  const t = (r - 16.5) / 15.5; // -1..1
+  const c = t < 0 ? "--div-lo" : "--div-hi";
+  const a = Math.round(Math.abs(t) * 55);
+  return `<span class="rank-cell" style="background:color-mix(in srgb, var(${c}) ${a}%, transparent)">${r}</span>`;
+}
+
+// ---------- sortable tables ----------
+function makeTable(el, cols, getRows, opts = {}) {
+  const state = {key: opts.sortKey || null, dir: opts.sortDir || -1};
+  function render() {
+    let rows = getRows().slice();
+    if (state.key) {
+      rows.sort((a, b) => {
+        const x = a[state.key], y = b[state.key];
+        if (x == null && y == null) return 0;
+        if (x == null) return 1;
+        if (y == null) return -1;
+        return (typeof x === "string" ? x.localeCompare(y) : x - y) * state.dir;
+      });
+    }
+    const head = "<thead><tr>" + cols.map(c =>
+      `<th data-key="${c.key}" class="${c.l ? "l " : ""}${state.key === c.key ? (state.dir > 0 ? "asc" : "desc") : ""}" title="${esc(c.title || "")}">${c.label}</th>`
+    ).join("") + "</tr></thead>";
+    let body = "", lastGroup;
+    for (const r of rows) {
+      if (opts.groupBy && !state.userSorted) {
+        const g = r[opts.groupBy];
+        if (g !== lastGroup) { body += `<tr class="tier-row"><td colspan="${cols.length}">${esc(g)}</td></tr>`; lastGroup = g; }
+      }
+      body += "<tr>" + cols.map(c => `<td class="${c.l ? "l" : ""}">${c.fmt ? c.fmt(r[c.key], r) : esc(r[c.key])}</td>`).join("") + "</tr>";
+    }
+    el.innerHTML = head + "<tbody>" + (body || `<tr><td colspan="${cols.length}" class="muted">No rows</td></tr>`) + "</tbody>";
+    el.querySelectorAll("th[data-key]").forEach(th => th.onclick = () => {
+      const k = th.dataset.key;
+      state.dir = state.key === k ? -state.dir : (typeof (getRows()[0] || {})[k] === "string" ? 1 : -1);
+      state.key = k; state.userSorted = true;
+      render();
+    });
+  }
+  render();
+  return render;
+}
+
+// ---------- position filters ----------
+const posFilter = {};
+const onPosChange = {};
+document.querySelectorAll("[data-posfilter]").forEach(seg => {
+  const id = seg.dataset.posfilter, list = seg.dataset.positions.split(",");
+  posFilter[id] = list[0];
+  seg.innerHTML = list.map((p, i) => `<button data-v="${p}" class="${i ? "" : "on"}">${p}</button>`).join("");
+  seg.onclick = e => {
+    const b = e.target.closest("button"); if (!b) return;
+    seg.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b));
+    posFilter[id] = b.dataset.v;
+    (onPosChange[id] || []).forEach(fn => fn());
+  };
+});
+const onPos = (id, fn) => (onPosChange[id] = onPosChange[id] || []).push(fn);
+const byPos = (id, rows) => posFilter[id] === "All" ? rows : rows.filter(r => r.position === posFilter[id]);
+
+document.querySelectorAll("[data-legend]").forEach(el => {
+  const shape = {circle: "dot", triangle: "tri", rect: "", rectRot: "dia"};
+  el.innerHTML = el.dataset.legend.split(",").map(p =>
+    `<span class="${shape[POS_SHAPE[p]]}" style="--c:var(${POS_VAR[p]})">${p}</span>`).join("");
+});
+
+// ---------- charts ----------
+if (HAS_CHART) {
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+  Chart.defaults.font.size = 12;
+} else {
+  // CDN unreachable: tables still work; replace chart areas with a notice.
+  document.querySelectorAll(".chart-wrap").forEach(w => {
+    w.style.height = "auto";
+    w.innerHTML = '<div class="note">Charts need Chart.js from cdnjs.cloudflare.com, which could not be loaded. Tables below are unaffected.</div>';
+  });
+  document.querySelectorAll("[data-reset]").forEach(b => b.remove());
+}
+
+// Draws text only for points flagged `label: true` or clicked by the user.
+const selectedLabels = new Set();
+const labelPlugin = {
+  id: "selLabels",
+  afterDatasetsDraw(chart) {
+    const {ctx, chartArea: a} = chart;
+    ctx.save();
+    ctx.font = "11px " + Chart.defaults.font.family;
+    ctx.fillStyle = css("--text-2");
+    ctx.textBaseline = "bottom";
+    chart.data.datasets.forEach((ds, di) => {
+      if (!ds.data.some(p => p && p.name)) return;
+      const meta = chart.getDatasetMeta(di);
+      if (meta.hidden) return;
+      meta.data.forEach((pt, i) => {
+        const d = ds.data[i];
+        if (!d || !(d.label || selectedLabels.has(chart.canvas.id + "|" + d.name))) return;
+        if (pt.x < a.left || pt.x > a.right || pt.y < a.top || pt.y > a.bottom) return;
+        const text = d.short || d.name;
+        const w = ctx.measureText(text).width;
+        const x = Math.min(Math.max(pt.x + 6, a.left), a.right - w);
+        ctx.fillText(text, x, pt.y - 4);
+      });
+    });
+    ctx.restore();
+  },
+};
+
+// y = x reference line
+const diagPlugin = {
+  id: "diag",
+  beforeDatasetsDraw(chart, _, opts) {
+    if (!opts || !opts.on) return;
+    const {ctx, chartArea: a, scales: {x, y}} = chart;
+    const lo = Math.max(x.min, y.min), hi = Math.min(x.max, y.max);
+    if (hi <= lo) return;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(a.left, a.top, a.width, a.height); ctx.clip();
+    ctx.strokeStyle = css("--text-3"); ctx.setLineDash([5, 4]); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x.getPixelForValue(lo), y.getPixelForValue(lo));
+    ctx.lineTo(x.getPixelForValue(hi), y.getPixelForValue(hi)); ctx.stroke();
+    ctx.restore();
+  },
+};
+
+const charts = {};
+const chartBuilders = {};
+
+function scatter(id, build) {
+  if (!HAS_CHART) return;
+  chartBuilders[id] = build;
+  drawChart(id);
+}
+function drawChart(id) {
+  if (!HAS_CHART) return;
+  if (charts[id]) charts[id].destroy();
+  const cfg = chartBuilders[id]();
+  const grid = css("--grid"), text2 = css("--text-2"), surface = css("--surface");
+  cfg.data.datasets.forEach(ds => {
+    ds.pointRadius = ds.pointRadius ?? 5;
+    ds.pointHoverRadius = 8;
+    ds.pointBorderColor = surface;
+    ds.pointBorderWidth = 1.5;
+  });
+  const axis = (t) => ({title: {display: true, text: t, color: text2}, grid: {color: grid}, ticks: {color: text2}, border: {color: grid}});
+  charts[id] = new Chart($(id), {
+    type: "scatter",
+    data: cfg.data,
+    plugins: [labelPlugin, diagPlugin],
+    options: {
+      maintainAspectRatio: false, animation: false,
+      scales: {x: axis(cfg.x), y: axis(cfg.y)},
+      plugins: {
+        legend: {display: false},
+        diag: {on: !!cfg.diag},
+        tooltip: {callbacks: {label: c => cfg.tip(c.raw)}},
+        zoom: {
+          pan: {enabled: true, mode: "xy"},
+          zoom: {wheel: {enabled: true}, pinch: {enabled: true}, mode: "xy"},
+        },
+      },
+      onClick: (e, els, chart) => {
+        if (!els.length) return;
+        const d = chart.data.datasets[els[0].datasetIndex].data[els[0].index];
+        const k = id + "|" + d.name;
+        selectedLabels.has(k) ? selectedLabels.delete(k) : selectedLabels.add(k);
+        chart.draw();
+      },
+    },
+  });
+}
+function redrawCharts() { Object.keys(chartBuilders).forEach(drawChart); }
+document.querySelectorAll("[data-reset]").forEach(b => b.onclick = () => charts[b.dataset.reset] && charts[b.dataset.reset].resetZoom());
+
+// Flag the n most extreme points by a scoring function so only they get labels.
+function markExtremes(points, score, n) {
+  points.slice().sort((a, b) => score(b) - score(a)).slice(0, n).forEach(p => p.label = true);
+  return points;
+}
+function posDatasets(rows, positions, toPoint) {
+  return positions.map(p => ({
+    label: p,
+    data: rows.filter(r => r.position === p).map(toPoint),
+    backgroundColor: posColor(p),
+    pointStyle: POS_SHAPE[p],
+  }));
+}
+
+// ---------- 5.5 lineup ----------
+makeTable($("lineupTbl"), [
+  {key: "name", label: "Player", l: 1},
+  {key: "position", label: "Pos", fmt: posBadge},
+  {key: "team", label: "Team"},
+  {key: "status", label: "Status", fmt: v => v === "ACT" ? "ACT" : `<span class="chip bad">${esc(v || "—")}</span>`},
+  {key: "opp", label: "Opp", l: 1, fmt: (v, r) => r.bye ? `<span class="chip neu">BYE</span> then ${r.home ? "vs" : "@"} ${esc(v)} (wk ${r.week})`
+    : v ? `${r.home ? "vs" : "@"} ${esc(v)} <span class="muted">wk ${r.week}</span>` : "—"},
+  {key: "opp_rank", label: "Opp rank", fmt: rankCell, title: "Opponent's rank at this position (1 = stingiest, 32 = most generous)"},
+  {key: "opp_fp_pg", label: "Opp FP/G", fmt: f(1)},
+  {key: "opp_confidence", label: "Conf", fmt: v => v == null ? "—" : `<span class="${v < META.low_confidence ? "muted" : ""}">${v.toFixed(0)}</span>`},
+  {key: "opp_slot", label: "Opp slot tendency", l: 1, fmt: v => v ? esc(v) : '<span class="muted">—</span>'},
+  {key: "ovr_rank", label: "Ovr rank", fmt: v => v ?? '<span class="muted">—</span>'},
+  {key: "proj_pts", label: "Proj", fmt: f(1)},
+  {key: "read", label: "Read", l: 1, fmt: v => {
+    if (!v) return "—";
+    const cls = v.startsWith("Plus") ? "good" : v.startsWith("Tough") ? "bad" : "neu";
+    return `<span class="chip ${cls}">${esc(v)}</span>`;
+  }},
+], () => LINEUP);
+
+// ---------- 5.1 plays per game ----------
+scatter("playsChart", () => ({
+  x: `Plays/G ${META.prior_season}`, y: `Plays/G ${META.season}`, diag: true,
+  data: {datasets: [{
+    data: markExtremes(PLAYS.filter(r => r.current != null && r.prior != null)
+      .map(r => ({x: r.prior, y: r.current, name: r.team, delta: r.delta})), p => Math.abs(p.delta), 8),
+    backgroundColor: css("--accent"),
+  }]},
+  tip: d => `${teamName(d.name)} (${d.name}): ${d.y.toFixed(1)} vs ${d.x.toFixed(1)} (${d.delta > 0 ? "+" : ""}${d.delta.toFixed(1)})`,
+}));
+makeTable($("playsTbl"), [
+  {key: "team", label: "Team", l: 1, fmt: v => `${esc(v)} <span class="muted">${esc(teamName(v))}</span>`},
+  {key: "current", label: `${META.season} plays/G`, fmt: f(1)},
+  {key: "prior", label: `${META.prior_season} plays/G`, fmt: f(1)},
+  {key: "delta", label: "Change", fmt: signed(1)},
+], () => PLAYS, {sortKey: "current"});
+
+// ---------- 5.2 separation ----------
+let sepSeason = "cur";
+$("sepNote").innerHTML = META.tprr_true_available
+  ? `Prior season (${META.prior_season}) Y = <b>true TPRR</b> from pbp_participation (routes = dropbacks on the field, min ${META.min_routes}). Current season (${META.season}) Y = <b>targets ÷ offensive snaps proxy</b> — participation data is not published in-season. Flags compare proxy to proxy: separation ±1.0 yd, target rate +50% / −30%.`
+  : `pbp_participation for ${META.prior_season} was unavailable, so true TPRR is missing; the current season uses a targets ÷ snaps proxy.`;
+$("sepSeason").onclick = e => {
+  const b = e.target.closest("button"); if (!b) return;
+  sepSeason = b.dataset.v;
+  $("sepSeason").querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b));
+  drawChart("sepChart");
+};
+scatter("sepChart", () => {
+  const prior = sepSeason === "prior";
+  const xk = prior ? "sep_prior" : "sep", yk = prior ? "tprr" : "tps";
+  const rows = byPos("sep", SEP).filter(r => r[xk] != null && r[yk] != null);
+  const pts = rows.map(r => ({x: r[xk], y: r[yk], name: r.name, short: r.name.split(" ").slice(-1)[0], position: r.position, team: r.team, flags: r.flags}));
+  markExtremes(pts, p => p.y * 10 + p.x, 6);
+  markExtremes(pts, p => p.flags ? 1 : 0, pts.filter(p => p.flags).length);
+  return {
+    x: `NGS avg separation (yd), ${prior ? META.prior_season : META.season}`,
+    y: prior ? `Targets per route run (true TPRR), ${META.prior_season}` : `Targets per snap (TPRR proxy), ${META.season}`,
+    data: {datasets: posDatasets(pts, ["WR", "TE"], p => p)},
+    tip: d => `${d.name} (${d.team}) · sep ${d.x.toFixed(2)} · ${prior ? "TPRR" : "tgt/snap"} ${(d.y * 100).toFixed(1)}%${d.flags ? " · " + d.flags : ""}`,
+  };
+});
+const renderSep = makeTable($("sepTbl"), [
+  {key: "name", label: "Player", l: 1},
+  {key: "position", label: "Pos", fmt: posBadge},
+  {key: "team", label: "Team"},
+  {key: "sep", label: `Sep ${META.season}`, fmt: f(2)},
+  {key: "tps", label: `Tgt/snap ${META.season}`, fmt: pct(1), title: "Proxy: targets ÷ offensive snaps"},
+  {key: "sep_prior", label: `Sep ${META.prior_season}`, fmt: f(2)},
+  {key: "tprr", label: `TPRR ${META.prior_season}`, fmt: pct(1), title: "True targets per route run"},
+  {key: "routes", label: "Routes", fmt: f(0)},
+  {key: "tps_prior", label: `Tgt/snap ${META.prior_season}`, fmt: pct(1)},
+  {key: "sep_delta", label: "Sep Δ", fmt: signed(2)},
+  {key: "rate_change", label: "Rate Δ", fmt: v => v == null ? '<span class="muted">—</span>' : signed(0)(v * 100) + "%"},
+  {key: "flags", label: "Flags", l: 1},
+], () => byPos("sep", SEP).filter(r => !$("sepFlagged").checked || r.flags), {sortKey: "sep"});
+$("sepFlagged").onchange = renderSep;
+onPos("sep", () => { drawChart("sepChart"); renderSep(); });
+
+// ---------- 5.3 defense ----------
+posFilter.def = "QB";
+const renderDef = makeTable($("defTbl"), [
+  {key: "rank", label: "Rank", fmt: rankCell},
+  {key: "team", label: "Defense", l: 1, fmt: v => `${esc(v)} <span class="muted">${esc(teamName(v))}</span>`},
+  {key: "fp_pg", label: "FP allowed/G", fmt: f(1)},
+  {key: "league_fp_pg", label: "League avg", fmt: f(1)},
+  {key: "baseline_fp_pg", label: "3-yr baseline", fmt: f(1), title: "50/30/20 blend of prior three seasons"},
+  {key: "games", label: "G"},
+  {key: "elite_ratio", label: "Top-12 share", fmt: pct(0), title: "Share of FP allowed that went to top-12 players at the position"},
+  {key: "confidence", label: "Confidence", fmt: v => `<span class="${v < META.low_confidence ? "muted" : ""}">${v.toFixed(0)}</span>`},
+], () => DEF.filter(r => r.position === posFilter.def), {sortKey: "rank", sortDir: 1});
+onPos("def", renderDef);
+
+// ---------- 5.4 slot/perimeter ----------
+scatter("slotChart", () => ({
+  x: "Perimeter WR+TE FP allowed/G", y: "Slot/middle WR+TE FP allowed/G",
+  data: {datasets: [{
+    data: markExtremes(SLOT.map(r => ({x: r.perim_fp_pg, y: r.slot_fp_pg, name: r.team, tendency: r.tendency, z: r.rel_z})), p => Math.abs(p.z), 10),
+    backgroundColor: css("--accent"),
+  }]},
+  tip: d => `${teamName(d.name)}: slot ${d.y.toFixed(1)} · perimeter ${d.x.toFixed(1)} · ${d.tendency}`,
+}));
+makeTable($("slotTbl"), [
+  {key: "team", label: "Defense", l: 1, fmt: v => `${esc(v)} <span class="muted">${esc(teamName(v))}</span>`},
+  {key: "slot_fp_pg", label: "Slot FP/G", fmt: f(1)},
+  {key: "perim_fp_pg", label: "Perimeter FP/G", fmt: f(1)},
+  {key: "diff", label: "Slot − Perim", fmt: signed(1)},
+  {key: "rel_z", label: "vs league (z)", fmt: signed(2)},
+  {key: "tendency", label: "Tendency", l: 1},
+  {key: "games", label: "G"},
+], () => SLOT, {sortKey: "rel_z"});
+
+// ---------- 5.6 xFP ----------
+scatter("xfpChart", () => {
+  const pts = byPos("xfp", XFP).map(r => ({x: r.xfp, y: r.actual, name: r.name, short: r.name.split(" ").slice(-1)[0], position: r.position, team: r.team, delta: r.delta}));
+  markExtremes(pts, p => Math.abs(p.delta), 10);
+  return {
+    x: "Expected FP (xFP)", y: "Actual FP", diag: true,
+    data: {datasets: posDatasets(pts, ["RB", "WR", "TE"], p => p)},
+    tip: d => `${d.name} (${d.team}) · xFP ${d.x.toFixed(1)} · actual ${d.y.toFixed(1)} · Δ ${d.delta > 0 ? "+" : ""}${d.delta.toFixed(1)}`,
+  };
+});
+const renderXfp = makeTable($("xfpTbl"), [
+  {key: "name", label: "Player", l: 1},
+  {key: "position", label: "Pos", fmt: posBadge},
+  {key: "team", label: "Team"},
+  {key: "games", label: "G"},
+  {key: "targets", label: "Tgt", fmt: f(0)},
+  {key: "carries", label: "Car", fmt: f(0)},
+  {key: "xfp", label: "xFP", fmt: f(1)},
+  {key: "actual", label: "Actual", fmt: f(1)},
+  {key: "delta", label: "Δ", fmt: signed(1)},
+  {key: "xfp_pg", label: "xFP/G", fmt: f(1)},
+  {key: "actual_pg", label: "FP/G", fmt: f(1)},
+  {key: "delta", label: "Read", l: 1, fmt: v => v <= -8 ? '<span class="chip good">Buy-low</span>' : v >= 8 ? '<span class="chip bad">Regression risk</span>' : ""},
+], () => byPos("xfp", XFP), {sortKey: "xfp"});
+onPos("xfp", () => { drawChart("xfpChart"); renderXfp(); });
+
+// ---------- 5.7 red zone ----------
+const renderRz = makeTable($("rzTbl"), [
+  {key: "name", label: "Player", l: 1},
+  {key: "position", label: "Pos", fmt: posBadge},
+  {key: "team", label: "Team"},
+  {key: "rz_targets", label: "RZ tgt", fmt: f(0)},
+  {key: "rz_carries", label: "RZ car", fmt: f(0)},
+  {key: "rz_opps", label: "RZ opps", fmt: f(0)},
+  {key: "i10_targets", label: "I10 tgt", fmt: f(0)},
+  {key: "i10_carries", label: "I10 car", fmt: f(0)},
+  {key: "i10_opps", label: "I10 opps", fmt: f(0)},
+  {key: "rz_tds", label: "TDs", fmt: f(0)},
+  {key: "td_regression", label: "Signal", l: 1, fmt: v => v ? '<span class="chip good">TDs due ↑</span>' : ""},
+], () => byPos("rz", RZ), {sortKey: "rz_opps"});
+onPos("rz", renderRz);
+
+// ---------- 5.8 CPOE / RYOE ----------
+scatter("cpoeChart", () => ({
+  x: "Avg intended air yards (aDOT)", y: "CPOE (%)",
+  data: {datasets: [{
+    data: markExtremes(CPOE.map(r => ({x: r.adot, y: r.cpoe, name: r.name, short: r.name.split(" ").slice(-1)[0], team: r.team})), p => Math.abs(p.y), 8),
+    backgroundColor: posColor("QB"),
+  }]},
+  tip: d => `${d.name} (${d.team}) · CPOE ${d.y > 0 ? "+" : ""}${d.y.toFixed(1)} · aDOT ${d.x.toFixed(1)}`,
+}));
+makeTable($("cpoeTbl"), [
+  {key: "name", label: "QB", l: 1},
+  {key: "team", label: "Team"},
+  {key: "attempts", label: "Att"},
+  {key: "cpoe", label: "CPOE", fmt: signed(1)},
+  {key: "adot", label: "aDOT", fmt: f(1)},
+  {key: "ttt", label: "TTT", fmt: f(2), title: "Avg time to throw (s)"},
+], () => CPOE, {sortKey: "cpoe"});
+makeTable($("ryoeTbl"), [
+  {key: "name", label: "Rusher", l: 1},
+  {key: "team", label: "Team"},
+  {key: "attempts", label: "Att"},
+  {key: "ryoe", label: "RYOE", fmt: signed(0)},
+  {key: "ryoe_per_att", label: "RYOE/att", fmt: signed(2)},
+  {key: "stacked_box_pct", label: "8+ box %", fmt: f(0)},
+], () => RYOE, {sortKey: "ryoe_per_att"});
+
+// ---------- 5.9 rankings ----------
+const renderRank = makeTable($("rankTbl"), [
+  {key: "rank", label: "#"},
+  {key: "full_name", label: "Player", l: 1},
+  {key: "position", label: "Pos", fmt: posBadge},
+  {key: "team", label: "Team"},
+  {key: "opp", label: "Opp", fmt: (v, r) => r.bye ? '<span class="chip neu">BYE</span>' : esc(v || "—")},
+  {key: "opp_rank", label: "Opp rank", fmt: rankCell},
+  {key: "games", label: "G", fmt: f(0)},
+  {key: "ppg", label: `PPG ${META.season}`, fmt: f(1)},
+  {key: "ppg_3yr", label: "PPG 3-yr", fmt: f(1)},
+  {key: "volume_ratio", label: "Vol ratio", fmt: f(2), title: "Current opportunity/G ÷ 3-yr opportunity/G, capped at 1"},
+  {key: "skill_ppg", label: "Skill PPG", fmt: f(1)},
+  {key: "matchup_mult", label: "Matchup ×", fmt: f(2)},
+  {key: "proj_pts", label: "Proj", fmt: v => `<b>${v.toFixed(1)}</b>`},
+], () => {
+  const q = $("rankSearch").value.trim().toLowerCase();
+  return byPos("rank", RANKS).filter(r => !q || r.full_name.toLowerCase().includes(q) || (r.team || "").toLowerCase() === q);
+}, {sortKey: "rank", sortDir: 1, groupBy: "tier"});
+onPos("rank", renderRank);
+$("rankSearch").oninput = renderRank;
+$("gapsNote").innerHTML = GAPS.length
+  ? `<b>Data gaps (${GAPS.length}):</b> active players with no play-by-play in this or the prior three seasons, so they can't be projected yet — ` +
+    GAPS.map(g => `${esc(g.full_name)} (${g.position}, ${g.team})`).join(", ")
+  : "No active players are missing play-by-play data.";
+})();
+</script>
+</body>
+</html>
