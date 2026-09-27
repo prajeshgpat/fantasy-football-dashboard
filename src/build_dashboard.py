@@ -37,9 +37,15 @@ def plays_per_game() -> list[dict]:
     return df.rename_axis("team").reset_index().round(2).to_dict("records")
 
 
+def _name_key(name: str) -> str:
+    """Case/punctuation/spacing-insensitive key, so "R J Harvey" matches "RJ Harvey"."""
+    return re.sub(r"[^a-z0-9]", "", name.casefold())
+
+
 def my_lineup(dvp: pd.DataFrame, slot: pd.DataFrame, ranks: pd.DataFrame) -> list[dict]:
     ros = fetch.load_roster(config.SEASON)
-    ros = ros.assign(status_order=(ros["status"] != "ACT").astype(int))
+    ros = ros.assign(status_order=(ros["status"] != "ACT").astype(int),
+                     name_key=ros["full_name"].fillna("").map(_name_key))
     ros = ros.sort_values(["status_order", "week"], ascending=[True, False])
     opp = rankings.next_opponents().set_index("team")
     tend = slot.set_index("team")["tendency"]
@@ -47,7 +53,7 @@ def my_lineup(dvp: pd.DataFrame, slot: pd.DataFrame, ranks: pd.DataFrame) -> lis
     proj = ranks.set_index("player_id")[["rank", "proj_pts"]]
     rows = []
     for name in config.MY_ROSTER:
-        m = ros[ros["full_name"].str.casefold() == name.casefold()]
+        m = ros[ros["name_key"] == _name_key(name)]
         if m.empty:
             rows.append({"name": name, "read": "Not found in roster file"})
             continue

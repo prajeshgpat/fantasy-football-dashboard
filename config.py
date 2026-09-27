@@ -13,14 +13,20 @@ ROSTER_SLOTS = {"QB": 1, "RB": 2, "WR": 2, "TE": 1, "FLEX": 2, "K": 1, "DST": 1}
 # Names only — teams are resolved from the nflverse roster file at build time,
 # so in-season trades are picked up automatically. Replace with your roster.
 MY_ROSTER = [
-    "Josh Allen",
-    "Bijan Robinson",
-    "Jahmyr Gibbs",
-    "Ja'Marr Chase",
-    "Puka Nacua",
-    "Trey McBride",
-    "Amon-Ra St. Brown",
+    "Joe Burrow",
+    "Jonathan Taylor",
+    "Saquon Barkley",
     "James Cook",
+    "Tee Higgins",
+    "George Pickens",
+    "Davante Adams",
+    "Brock Bowers",
+    "Jalen Coker",
+    "Stefon Diggs",
+    "RJ Harvey",
+    "Isaiah Likely",
+    "Jeremiyah Love",
+    "Jordan Mason",
 ]
 
 OUTPUT_HTML = "dashboard.html"
