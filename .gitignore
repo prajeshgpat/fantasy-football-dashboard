@@ -6,3 +6,6 @@ data/
 __pycache__/
 .venv/
 .DS_Store
+
+# generated output — rebuild with: python -m src.build_dashboard
+/dashboard.html
