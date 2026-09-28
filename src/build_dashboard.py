@@ -163,6 +163,7 @@ def compute() -> dict[str, object]:
         "tprr_true_available": sep["tprr"].notna().any(),
         "min_routes": separation.MIN_ROUTES,
         "low_confidence": LOW_CONFIDENCE,
+        "refresh_trigger_id": getattr(config, "REFRESH_TRIGGER_ID", None),
     }
     return {
         "META": meta,

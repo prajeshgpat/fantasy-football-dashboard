@@ -30,6 +30,13 @@ python -m src.build_dashboard    # compute every section, write dashboard.html
 (`python -m src.build_dashboard site/index.html`). `--fragment` drops the
 `<html>/<head>/<body>` wrapper, for hosts that add their own page skeleton.
 
+**Refresh button:** the published page has a "Refresh data" button that fires
+the Claude Code routine named by `REFRESH_TRIGGER_ID` in `config.py`. The
+routine re-runs fetch + build and republishes the page, and open copies reload
+by themselves (about 3-5 minutes). The button only appears on the published
+artifact, which can reach the Claude Code Remote connector; the local
+`dashboard.html` doesn't show it.
+
 **Weekly refresh:** re-run both. `src.fetch` drops the cached current-season
 files (pbp, roster, snap counts, schedule, NGS) before re-downloading; prior
 seasons stay cached. nflverse usually posts a completed week within ~24h of

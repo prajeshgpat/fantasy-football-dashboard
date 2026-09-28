@@ -31,6 +31,11 @@ MY_ROSTER = [
 
 OUTPUT_HTML = "dashboard.html"
 
+# Claude Code routine that re-runs fetch + build and republishes the dashboard.
+# The page's "Refresh data" button fires it (published artifact only). Set to
+# None to hide the button.
+REFRESH_TRIGGER_ID = "trig_01S5RJqFPoxZAyHDp9U5VtJp"
+
 TEAM_NAMES = {
     "ARI": "Cardinals", "ATL": "Falcons", "BAL": "Ravens", "BUF": "Bills",
     "CAR": "Panthers", "CHI": "Bears", "CIN": "Bengals", "CLE": "Browns",

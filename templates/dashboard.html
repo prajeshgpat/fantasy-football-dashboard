@@ -58,6 +58,13 @@ header {
 .hdr h1 { font-size: 17px; margin: 0; }
 .hdr .meta { color: var(--text-2); font-size: 12px; }
 #themeBtn { margin-left: auto; }
+.refresh { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.refresh[hidden] { display: none; }
+.refresh + #themeBtn { margin-left: 0; }
+.refresh-status { font-size: 12px; color: var(--text-2); }
+.refresh-status.err { color: var(--bad); }
+.refresh-status.ok { color: var(--good); }
+#refreshBtn:disabled { opacity: .6; cursor: progress; }
 .tabs {
   display: flex; gap: 6px; width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;
   scrollbar-width: none; padding-bottom: 1px;
@@ -138,6 +145,10 @@ details.note[open] summary { margin-bottom: 4px; }
   <div class="hdr">
     <h1>Fantasy Football Dashboard</h1>
     <span class="meta" id="meta"></span>
+    <span class="refresh" id="refreshBox" hidden>
+      <button id="refreshBtn" title="Re-download nflverse data and rebuild this page (takes a few minutes)">Refresh data</button>
+      <span class="refresh-status" id="refreshStatus" role="status" aria-live="polite"></span>
+    </span>
     <button id="themeBtn" title="Toggle light/dark">Theme</button>
     <div class="tabs" id="tabs" role="tablist">
       <button data-tab="lineup" role="tab">My Lineup</button>
@@ -728,6 +739,90 @@ let initialTab = TAB_IDS[0];
 if (TAB_IDS.includes(location.hash.slice(1))) initialTab = location.hash.slice(1);
 else { try { const t = localStorage.getItem("ffd-tab"); if (TAB_IDS.includes(t)) initialTab = t; } catch (e) {} }
 showTab(initialTab, {silent: true});
+
+// ---------- refresh button ----------
+// Fires the Claude Code routine that re-fetches nflverse data, rebuilds and republishes
+// this page. Only offered where the page can reach the Claude Code Remote connector
+// (the published artifact); every open view reloads by itself when the new version lands.
+(async () => {
+  const TRIGGER = META.refresh_trigger_id;
+  if (!TRIGGER || !window.claude || !window.claude.use) return;
+  const mcp = await window.claude.use("mcp").catch(() => null);
+  if (!mcp) return;
+  const SERVER = "Claude Code Remote";
+  const box = $("refreshBox"), btn = $("refreshBtn"), status = $("refreshStatus");
+  box.hidden = false;
+  const RUN_TIMEOUT_MS = 15 * 60 * 1000, POLL_MS = 30 * 1000;
+  let pollTimer = null;
+
+  const say = (text, cls = "") => { status.textContent = text; status.className = "refresh-status " + cls; };
+  const ago = iso => {
+    const m = Math.round((Date.now() - Date.parse(iso)) / 60000);
+    return m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`;
+  };
+  const lastRun = async () => {
+    const res = await mcp.callTool(SERVER, "get_trigger", {trigger_id: TRIGGER}, {cache: false});
+    return (res.payload && res.payload.trigger && res.payload.trigger.last_run) || null;
+  };
+  const running = run => run && !run.finished_at && run.fired_at &&
+    Date.now() - Date.parse(run.fired_at) < RUN_TIMEOUT_MS;
+
+  // One message per error code that has its own fix; everything else gets the generic line.
+  function explain(e) {
+    const code = e && e.code;
+    if (code === "needs_reauth") return "Reconnect Claude Code in claude.ai Settings → Connectors, then try again.";
+    if (code === "server_not_connected" || code === "selection_required")
+      return "Claude Code isn't connected for this page. Check claude.ai Settings → Connectors.";
+    if (code === "not_in_manifest" || code === "not_granted" || code === "consent_required")
+      return "Refreshing wasn't allowed for this page. Allow Claude Code when asked, then try again.";
+    if (code === "blocked_by_policy" || code === "approval_required") return "Your organization's policy blocks this action.";
+    if (code === "tool_error") return "The refresh routine couldn't be started: " + (e.message || "unknown error");
+    if (code === "server_unavailable" || code === "upstream_error") return "Couldn't reach Claude Code just now. Try again in a minute.";
+    return "Refresh failed" + (e && e.message ? ": " + e.message : ".");
+  }
+
+  function watch(firedAt) {
+    btn.disabled = true;
+    clearTimeout(pollTimer);
+    const tick = async () => {
+      let run;
+      try { run = await lastRun(); } catch (e) {
+        // A status read failing doesn't mean the run failed; keep waiting quietly.
+        pollTimer = setTimeout(tick, POLL_MS * 2); return;
+      }
+      const mine = run && run.fired_at && Date.parse(run.fired_at) >= firedAt - 5000;
+      if (mine && run.finished_at) {
+        btn.disabled = false;
+        if (/SUCCEEDED/.test(run.status || "")) say("Refreshed. Loading the new version…", "ok");
+        else say("The refresh run failed. Try again, or check the routine in claude.ai.", "err");
+        return;
+      }
+      if (Date.now() - firedAt > RUN_TIMEOUT_MS) {
+        btn.disabled = false; say("Still no result after 15 min. Check the routine in claude.ai.", "err"); return;
+      }
+      say(`Refreshing… started ${ago(new Date(firedAt).toISOString())}. The page reloads when done (about 3–5 min).`);
+      pollTimer = setTimeout(tick, POLL_MS);
+    };
+    tick();
+  }
+
+  btn.onclick = async () => {
+    btn.disabled = true;
+    say("Checking…");
+    try {
+      const run = await lastRun();
+      if (running(run)) { watch(Date.parse(run.fired_at)); return; }   // don't start a second run
+      const firedAt = Date.now();
+      await mcp.callTool(SERVER, "fire_trigger",
+        {trigger_id: TRIGGER, text: "Manual refresh requested from the dashboard's Refresh data button."},
+        {cache: false});
+      watch(firedAt);
+    } catch (e) {
+      btn.disabled = false;
+      say(explain(e), "err");
+    }
+  };
+})();
 })();
 </script>
 </body>
