@@ -70,7 +70,7 @@ data/                      gitignored cache (all re-downloadable)
 
 | Section | What it shows |
 |---|---|
-| Waivers | Top 5 probably-available players per position by projection, tagged with why (rising usage, buy-low vs xFP, plus matchup, team volume up, low usage). "Available" is estimated from `WAIVER_ROSTERED_DEPTH` and `ROSTERED_ELSEWHERE` in `config.py`. |
+| Start/Sit | Pick 2-5 players from a search dropdown to compare this week: ordered by projection with every My Lineup column, and a Start / Toss-up (within 1 point) / Sit call. Picks are remembered in the browser. |
 | SOS | Every opponent for weeks 1-18 at each position (QB/RB/WR/WR1/WR2/TE), colored easy/hard, with rest-of-season, fantasy playoff (`FANTASY_PLAYOFF_WEEKS`) and played multipliers, plus the same grid for your roster. Future weeks blend this season with the 3-year baseline (baseline = 4 games). |
 | My Lineup | Each rostered player's next opponent, that defense's rank/confidence at the position, slot tendency, and a Plus / Tough / Neutral read ("low confidence" when confidence < 45). |
 | Offensive plays per game | Regulation plays/G (OT removed) vs last season, with a verdict on whether the change will last: neutral-script tempo, share of snaps trailing/leading by 9+, drives/G, plays/drive and head-coach changes, plus an expected rest-of-season plays/G. |

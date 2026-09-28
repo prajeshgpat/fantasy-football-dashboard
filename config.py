@@ -32,12 +32,6 @@ MY_ROSTER = [
 # Fantasy playoff weeks, highlighted in strength of schedule.
 FANTASY_PLAYOFF_WEEKS = [15, 16, 17]
 
-# Waiver targets. There's no league API, so the page assumes the top N at each
-# position (by projection, by 3-year reputation, and early-round rookies) are
-# rostered. List players you know are taken to exclude them too.
-WAIVER_ROSTERED_DEPTH = {"QB": 12, "RB": 32, "WR": 40, "TE": 12}
-ROSTERED_ELSEWHERE: list[str] = []
-
 OUTPUT_HTML = "dashboard.html"
 
 # Claude Code routine that re-runs fetch + build and republishes the dashboard.

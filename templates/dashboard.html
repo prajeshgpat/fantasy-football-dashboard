@@ -134,6 +134,20 @@ tr.tier-row td:first-child { background: var(--surface-2); }
 .chip + .chip { margin-left: 4px; }
 .tag { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 4px; border: 1px solid var(--border); color: var(--text-2); margin: 1px 2px 1px 0; }
 .tag.fit { border-color: var(--good); color: var(--good); }
+.ss-pickers { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin: 8px 0; }
+.ss-slot { position: relative; display: flex; gap: 4px; align-items: center; }
+.ss-slot input { flex: 1; min-width: 0; font: inherit; font-size: 14px; color: var(--text); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; }
+.ss-slot input:focus { outline: 2px solid var(--accent); outline-offset: 0; }
+.ss-slot input.picked { border-color: var(--accent); }
+.ss-slot .rm { padding: 4px 9px; }
+.ss-list { position: absolute; top: calc(100% + 2px); left: 0; right: 0; z-index: 20; margin: 0; padding: 4px 0; list-style: none;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.18);
+  max-height: 280px; overflow-y: auto; }
+.ss-list li { padding: 6px 10px; cursor: pointer; display: flex; gap: 6px; align-items: center; }
+.ss-list li[aria-selected="true"], .ss-list li:hover { background: var(--surface-2); }
+.ss-list li .muted { margin-left: auto; }
+.ss-list .empty { color: var(--text-3); cursor: default; }
 .updated { font-size: 12px; color: var(--text-2); white-space: nowrap; }
 .hint { font-size: 12px; color: var(--text-3); }
 /* strength of schedule grid */
@@ -171,7 +185,7 @@ details.note[open] summary { margin-bottom: 4px; }
     <button id="themeBtn" title="Toggle light/dark">Theme</button>
     <div class="tabs" id="tabs" role="tablist">
       <button data-tab="lineup" role="tab">My Lineup</button>
-      <button data-tab="waivers" role="tab">Waivers</button>
+      <button data-tab="startsit" role="tab">Start/Sit</button>
       <button data-tab="sos" role="tab">SOS</button>
       <button data-tab="plays" role="tab">Plays/G</button>
       <button data-tab="separation" role="tab">Separation</button>
@@ -192,12 +206,17 @@ details.note[open] summary { margin-bottom: 4px; }
   <div class="tbl-wrap"><table id="lineupTbl"></table></div>
 </section>
 
-<section id="waivers" role="tabpanel" hidden>
-  <h2>Waiver Targets</h2>
-  <p class="desc">The five best probably-available players at each position, by projected points, with the reasons to add them. Opportunity = dropbacks (QB), carries + targets (RB), targets (WR/TE).</p>
-  <details class="note"><summary><b>How "available" is estimated</b></summary>There's no league connection, so a player counts as rostered if he's in the top <span id="waiverDepth"></span> at his position by current projection or by 3-year scoring (what got drafted), is an early-round rookie, is on your roster, or is listed in <code>ROSTERED_ELSEWHERE</code> in <code>config.py</code>. Add names there as you learn they're taken.</details>
-  <div class="controls"><span class="seg" data-posfilter="waiv" data-positions="All,QB,RB,WR,TE"></span></div>
-  <div class="tbl-wrap"><table id="waivTbl"></table></div>
+<section id="startsit" role="tabpanel" hidden>
+  <h2>Start / Sit</h2>
+  <p class="desc">Pick 2 to 5 players to compare this week. They're ordered by projected points, with every My Lineup column alongside. The top player gets <b>Start</b>. Anyone within 1 point of him is a <b>Toss-up</b>, where the matchup read and funnel should break the tie.</p>
+  <div class="ss-pickers" id="ssPickers"></div>
+  <div class="controls">
+    <button id="ssAdd" type="button">+ Add player</button>
+    <button id="ssMine" type="button" title="Fill the slots with players from My Lineup">Use my roster</button>
+    <button id="ssClear" type="button">Clear</button>
+    <span class="hint" id="ssHint"></span>
+  </div>
+  <div class="tbl-wrap" id="ssWrap"><table id="ssTbl"></table></div>
 </section>
 
 <section id="sos" role="tabpanel" hidden>
@@ -216,7 +235,7 @@ details.note[open] summary { margin-bottom: 4px; }
   <p class="desc">Regulation plays per game (overtime removed) this season vs last. A jump that comes from a faster neutral-script tempo, usually a new scheme, tends to stick. A jump from playing from behind, or from overtime, usually fades. Expected ROS is what to plan on for the rest of the season: it leans on this season more when tempo explains the change.</p>
   <details class="note"><summary><b>How the verdict is decided</b></summary><b>Neutral tempo</b> = seconds between snaps on the same drive while win probability is 20–80% (garbage time and clock-killing excluded); 1.5s faster or slower counts as a real change. <b>Trailing 9+</b> = share of regulation snaps played down two scores or more; an 8-point rise explains extra volume as game script. Plays-per-drive and drives-per-game say whether the offense is sustaining drives or just getting more possessions. A change under 3 plays/G is Stable. Three games is a small sample, so treat early verdicts as leanings.</details>
   <div class="legend" id="playsLegend"></div>
-  <div class="controls"><button data-reset="playsChart">Reset zoom</button><span class="hint">Pinch or Ctrl + scroll to zoom · drag to pan once zoomed · tap a point to label it</span></div>
+  <div class="controls"><button data-reset="playsChart">Reset zoom</button><span class="hint">Pinch or Ctrl + scroll to zoom · drag to pan · tap a point to label it</span></div>
   <div class="chart-wrap"><canvas id="playsChart" aria-label="Scatter of regulation plays per game, prior season vs current season, by team, colored by verdict"></canvas></div>
   <div class="tbl-wrap"><table id="playsTbl"></table></div>
 </section>
@@ -303,7 +322,8 @@ const META = {{META}};
 const TEAMS = {{TEAMS_DATA}};
 const VOLUME = {{VOLUME_DATA}};
 const SOS = {{SOS_DATA}};
-const WAIVERS = {{WAIVERS_DATA}};
+const START_SIT = {{START_SIT_DATA}};
+const MY_ROSTER_IDS = {{MY_ROSTER_IDS}};
 const RTAGS = {{RECEIVER_TAGS}};
 const SLOT_FACES = {{SLOT_FACES}};
 const SEP = {{SEPARATION_DATA}};
@@ -519,20 +539,14 @@ function drawChart(id) {
         legend: {display: false},
         diag: {on: !!cfg.diag},
         tooltip: {callbacks: {label: c => cfg.tip(c.raw)}},
-        // Calmer zoom: wheel needs Ctrl (trackpad pinch sends Ctrl+wheel), a slow step, and
-        // dragging only pans once zoomed in, so one-finger scrolling moves the page, not the chart.
+        // Calmer zoom: the wheel needs Ctrl (a trackpad pinch sends Ctrl+wheel) and zooms in
+        // small steps, so scrolling the page never zooms a chart. Dragging always pans.
         zoom: {
-          pan: {enabled: false, mode: "xy", threshold: 10},
+          pan: {enabled: true, mode: "xy", threshold: 5},
           zoom: {
             wheel: {enabled: true, speed: 0.04, modifierKey: "ctrl"},
             pinch: {enabled: true},
             mode: "xy",
-            onZoomComplete: ({chart}) => {
-              const zoomed = chart.isZoomedOrPanned();
-              if (chart.options.plugins.zoom.pan.enabled !== zoomed) {
-                chart.options.plugins.zoom.pan.enabled = zoomed; chart.update("none");
-              }
-            },
           },
         },
       },
@@ -549,12 +563,12 @@ function drawChart(id) {
 function redrawCharts() { Object.keys(chartBuilders).forEach(drawChart); }
 document.querySelectorAll("[data-reset]").forEach(b => b.onclick = () => {
   const c = charts[b.dataset.reset]; if (!c) return;
-  c.resetZoom(); c.options.plugins.zoom.pan.enabled = false; c.update("none");
+  c.resetZoom();
 });
 // Every chart gets the same zoom hint next to its reset button.
 document.querySelectorAll("[data-reset]").forEach(b => {
   if (!b.parentElement.querySelector(".hint")) b.insertAdjacentHTML("afterend",
-    '<span class="hint">Pinch or Ctrl + scroll to zoom · drag to pan once zoomed</span>');
+    '<span class="hint">Pinch or Ctrl + scroll to zoom · drag to pan</span>');
 });
 
 // Flag the n most extreme points by a scoring function so only they get labels.
@@ -572,7 +586,8 @@ function posDatasets(rows, positions, toPoint) {
 }
 
 // ---------- 5.5 lineup ----------
-makeTable($("lineupTbl"), [
+// Shared by My Lineup and Start/Sit so both show the same columns.
+const LINEUP_COLS = [
   {key: "name", label: "Player", l: 1},
   {key: "position", label: "Pos", fmt: (v, r) => posBadge(v) + (r.matchup_group && r.matchup_group !== v
     ? ` <span class="muted" title="Matched against the opponent's ${r.matchup_group} defense">${r.matchup_group}</span>` : "")},
@@ -593,7 +608,8 @@ makeTable($("lineupTbl"), [
   {key: "opp_slot", label: "Opp slot tendency", l: 1, fmt: (v, r) => !v ? '<span class="muted">—</span>'
     : esc(v) + (r.player_tag ? ` <span class="tag${r.slot_fit ? " fit" : ""}" title="${r.slot_fit ? "His style matches where this defense is vulnerable" : "His target location"}">${esc(r.player_tag)}${r.slot_fit ? " ✓" : ""}</span>` : "")},
   {key: "ovr_rank", label: "Ovr rank", fmt: v => v ?? '<span class="muted">—</span>'},
-], () => LINEUP);
+];
+makeTable($("lineupTbl"), LINEUP_COLS, () => LINEUP);
 
 // ---------- 5.1 plays per game / sustainability ----------
 const VERDICT = {
@@ -864,30 +880,115 @@ $("gapsNote").innerHTML = GAPS.length
     GAPS.map(g => `${esc(g.full_name)} (${g.position}, ${g.team})`).join(", ")
   : "No active players are missing play-by-play data.";
 
-// ---------- waivers ----------
-$("waiverDepth").textContent = Object.entries(META.waiver_depth).map(([p, n]) => `${n} ${p}s`).join(", ");
-const TAG_TONE = {"Rising usage": "good", "Buy-low (under xFP)": "good", "Plus matchup": "good", "Team volume up": "good",
-                  "Back from injury": "warn", "Low usage": "bad", "Rookie": "neu"};
-const renderWaiv = makeTable($("waivTbl"), [
-  {key: "pos_rank", label: "#"},
-  {key: "full_name", label: "Player", l: 1},
-  {key: "position", label: "Pos", fmt: posBadge},
-  {key: "team", label: "Team"},
-  {key: "tags", label: "Why add him", l: 1, cls: "wrap", fmt: v => (v || []).length
-    ? v.map(t => `<span class="chip ${TAG_TONE[t] || "neu"}">${esc(t)}</span>`).join("") : '<span class="muted">Best projection left</span>'},
-  {key: "proj_pts", label: "Proj", fmt: v => `<b>${v.toFixed(1)}</b>`},
-  {key: "opp", label: "Next opp", fmt: (v, r) => r.bye ? '<span class="chip neu">BYE</span>' : esc(v || "—")},
-  {key: "opp_rank", label: "Opp rank", fmt: rankCell},
-  {key: "games", label: "G", fmt: f(0)},
-  {key: "ppg", label: `PPG ${META.season}`, fmt: f(1)},
-  {key: "ppg_3yr", label: "PPG 3-yr", fmt: f(1)},
-  {key: "opp_last2", label: "Opp/G last 2 (before)", fmt: (v, r) => v == null ? "—"
-    : `${v.toFixed(1)} <span class="muted">(${r.opp_earlier != null ? r.opp_earlier.toFixed(1) : "—"})</span>`,
-   title: "Opportunities per game in his last 2 games, with earlier games in parentheses"},
-  {key: "xfp_pg", label: "xFP/G", fmt: f(1)},
-  {key: "team_volume", label: "Team volume", l: 1, fmt: (v, r) => v ? `<span class="chip ${VERDICT[r.team_volume_tone] ? VERDICT[r.team_volume_tone].chip : "neu"}">${esc(v)}</span>` : "—"},
-], () => byPos("waiv", WAIVERS), {groupBy: "position"});
-onPos("waiv", renderWaiv);
+// ---------- start / sit ----------
+const SS_MIN = 2, SS_MAX = 5, SS_TOSSUP = 1.0;
+const SS_BY_ID = Object.fromEntries(START_SIT.map(r => [r.player_id, r]));
+const ssNorm = t => String(t || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9 ]/g, "");
+START_SIT.forEach(r => { r._q = ssNorm(`${r.name} ${r.team} ${r.position}`); });
+let ssSlots = [null, null];
+try {
+  const saved = JSON.parse(localStorage.getItem("ffd-startsit") || "null");
+  if (Array.isArray(saved) && saved.length >= SS_MIN) ssSlots = saved.slice(0, SS_MAX).map(id => SS_BY_ID[id] ? id : null);
+} catch (e) {}
+const ssSave = () => { try { localStorage.setItem("ffd-startsit", JSON.stringify(ssSlots)); } catch (e) {} };
+
+function ssSearch(q, exclude) {
+  const n = ssNorm(q).trim();
+  const pool = START_SIT.filter(r => !exclude.has(r.player_id));
+  if (!n) return pool.filter(r => r.proj_pts != null).sort((a, b) => b.proj_pts - a.proj_pts).slice(0, 8);
+  const words = n.split(/\s+/);
+  return pool.filter(r => words.every(w => r._q.includes(w)))
+    .sort((a, b) => (b.name.toLowerCase().startsWith(n) - a.name.toLowerCase().startsWith(n)) || ((b.proj_pts ?? -1) - (a.proj_pts ?? -1)))
+    .slice(0, 8);
+}
+
+function ssRenderPickers() {
+  const box = $("ssPickers");
+  box.innerHTML = "";
+  ssSlots.forEach((id, i) => {
+    const r = id ? SS_BY_ID[id] : null;
+    const slot = document.createElement("div");
+    slot.className = "ss-slot";
+    slot.innerHTML = `<input id="ssInput${i}" type="search" autocomplete="off" role="combobox" aria-expanded="false"
+        aria-autocomplete="list" aria-controls="ssList${i}" aria-label="Player ${i + 1}"
+        placeholder="Player ${i + 1}: search name or team" class="${r ? "picked" : ""}">` +
+      (ssSlots.length > SS_MIN ? `<button type="button" class="rm" title="Remove this slot" aria-label="Remove player ${i + 1}">×</button>` : "") +
+      `<ul class="ss-list" id="ssList${i}" role="listbox" hidden></ul>`;
+    box.appendChild(slot);
+    const input = slot.querySelector("input"), list = slot.querySelector("ul");
+    input.value = r ? `${r.name} (${r.position}, ${r.team})` : "";
+    let items = [], active = -1;
+    const close = () => { list.hidden = true; input.setAttribute("aria-expanded", "false"); };
+    const open = () => {
+      const others = new Set(ssSlots.filter((x, j) => x && j !== i));
+      items = ssSearch(r && input.value === `${r.name} (${r.position}, ${r.team})` ? "" : input.value, others);
+      active = items.length ? 0 : -1;
+      list.innerHTML = items.length ? items.map((x, k) =>
+        `<li role="option" data-k="${k}" aria-selected="${k === active}">${posBadge(x.position)} ${esc(x.name)}` +
+        `<span class="muted">${esc(x.team)}${x.proj_pts != null ? " · " + x.proj_pts.toFixed(1) : ""}</span></li>`).join("")
+        : '<li class="empty">No match</li>';
+      list.hidden = false; input.setAttribute("aria-expanded", "true");
+    };
+    const choose = k => {
+      if (!items[k]) return;
+      ssSlots[i] = items[k].player_id; ssSave(); close(); ssRenderPickers(); ssRenderTable();
+    };
+    input.addEventListener("focus", () => { input.select(); open(); });
+    input.addEventListener("input", open);
+    input.addEventListener("keydown", e => {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault(); if (list.hidden) open();
+        active = Math.max(0, Math.min(items.length - 1, active + (e.key === "ArrowDown" ? 1 : -1)));
+        list.querySelectorAll("li[data-k]").forEach(li => li.setAttribute("aria-selected", String(+li.dataset.k === active)));
+      } else if (e.key === "Enter") { e.preventDefault(); choose(active); }
+      else if (e.key === "Escape") close();
+    });
+    input.addEventListener("blur", () => setTimeout(close, 150));
+    list.addEventListener("mousedown", e => { const li = e.target.closest("li[data-k]"); if (li) { e.preventDefault(); choose(+li.dataset.k); } });
+    const rm = slot.querySelector(".rm");
+    if (rm) rm.onclick = () => { ssSlots.splice(i, 1); ssSave(); ssRenderPickers(); ssRenderTable(); };
+  });
+  $("ssAdd").disabled = ssSlots.length >= SS_MAX;
+  $("ssHint").textContent = ssSlots.length >= SS_MAX ? `Up to ${SS_MAX} players` : "";
+}
+
+const SS_VERDICT = {Start: "good", "Toss-up": "warn", Sit: "neu"};
+const ssRenderTable = (() => {
+  let render;
+  return () => {
+    const chosen = ssSlots.filter(Boolean).map(id => ({...SS_BY_ID[id]}));
+    const live = chosen.filter(r => r.proj_pts != null && r.status === "ACT" && !r.bye).sort((a, b) => b.proj_pts - a.proj_pts);
+    const top = live.length ? live[0].proj_pts : null;
+    chosen.forEach(r => {
+      if (r.status !== "ACT") { r.verdict = "Sit"; r.why = `Status ${r.status || "unknown"}`; }
+      else if (r.bye) { r.verdict = "Sit"; r.why = "On bye"; }
+      else if (r.proj_pts == null) { r.verdict = "Sit"; r.why = "No projection yet"; }
+      else if (r.proj_pts === top) { r.verdict = "Start"; r.why = live.length > 1 ? `+${(top - live[1].proj_pts).toFixed(1)} over next` : ""; }
+      else if (top - r.proj_pts <= SS_TOSSUP) { r.verdict = "Toss-up"; r.why = `${(top - r.proj_pts).toFixed(1)} behind`; }
+      else { r.verdict = "Sit"; r.why = `${(top - r.proj_pts).toFixed(1)} behind`; }
+      r.ss_order = r.proj_pts == null || r.verdict === "Sit" && r.why && !r.why.endsWith("behind") ? -1 : r.proj_pts;
+    });
+    // A lone Start next to a Toss-up is a toss-up too.
+    if (chosen.some(r => r.verdict === "Toss-up")) chosen.forEach(r => { if (r.verdict === "Start") r.verdict = "Toss-up"; });
+    chosen.sort((a, b) => b.ss_order - a.ss_order);
+    $("ssWrap").hidden = chosen.length === 0;
+    const cols = [{key: "verdict", label: "Call", l: 1, fmt: (v, r) =>
+      `<span class="chip ${SS_VERDICT[v]}">${v}</span>${r.why ? `<span class="sub">${esc(r.why)}</span>` : ""}`}, ...LINEUP_COLS];
+    if (!render) render = makeTable($("ssTbl"), cols, () => ssRows);
+    ssRows = chosen;
+    render();
+  };
+})();
+let ssRows = [];
+$("ssAdd").onclick = () => { if (ssSlots.length < SS_MAX) { ssSlots.push(null); ssSave(); ssRenderPickers(); $("ssInput" + (ssSlots.length - 1)).focus(); } };
+$("ssClear").onclick = () => { ssSlots = [null, null]; ssSave(); ssRenderPickers(); ssRenderTable(); };
+$("ssMine").onclick = () => {
+  const mine = MY_ROSTER_IDS.filter(id => SS_BY_ID[id]).slice(0, SS_MAX);
+  ssSlots = mine.length >= SS_MIN ? mine : [...mine, null, null].slice(0, SS_MIN);
+  ssSave(); ssRenderPickers(); ssRenderTable();
+};
+ssRenderPickers();
+ssRenderTable();
 
 // ---------- strength of schedule ----------
 $("sosNote").textContent = `Future matchups blend each defense's ${META.season} numbers with its 3-year baseline (the baseline counts as ${SOS.blend_games} games), so early-season noise doesn't dictate week ${Math.max(...SOS.playoff_weeks)}. Faded cells are weeks already played. Fantasy playoffs: weeks ${SOS.playoff_weeks.join(", ")}.`;
@@ -929,7 +1030,7 @@ const renderSos = makeTable($("sosTbl"), [
 onPos("sos", renderSos);
 
 // ---------- tabs ----------
-const TAB_IDS = ["lineup", "waivers", "sos", "plays", "separation", "defense", "slot", "xfp", "redzone", "skill", "rankings"];
+const TAB_IDS = ["lineup", "startsit", "sos", "plays", "separation", "defense", "slot", "xfp", "redzone", "skill", "rankings"];
 const tabsBar = $("tabs");
 function showTab(id, opts = {}) {
   if (!TAB_IDS.includes(id)) id = TAB_IDS[0];

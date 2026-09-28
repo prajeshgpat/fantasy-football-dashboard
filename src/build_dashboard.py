@@ -17,7 +17,7 @@ import pandas as pd
 
 import config
 from src import (defense, expected_points, fetch, pace, rankings, redzone, schedule, scoring,
-                 separation, skill_metrics, slot_perimeter, waivers)
+                 separation, skill_metrics, slot_perimeter)
 
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE = ROOT / "templates" / "dashboard.html"
@@ -46,47 +46,59 @@ def defense_rows(dvp: pd.DataFrame) -> list[dict]:
     return rows
 
 
-def my_lineup(dvp: pd.DataFrame, slot: pd.DataFrame, ranks: pd.DataFrame,
-              tags: pd.DataFrame | None = None) -> list[dict]:
-    ros = fetch.load_roster(config.SEASON)
-    ros = ros.assign(status_order=(ros["status"] != "ACT").astype(int),
-                     name_key=ros["full_name"].fillna("").map(_name_key))
-    ros = ros.sort_values(["status_order", "week"], ascending=[True, False])
-    opp = rankings.next_opponents().set_index("team")
-    tend = slot.set_index("team")["tendency"]
-    tag_by_id = {} if tags is None else tags[tags["tag"] != ""].set_index("player_id")["tag"].to_dict()
-    # WRs are matched against the opponent's WR1 or WR2 row when the player holds that role.
-    roles = defense.wr_roles(config.SEASON).set_index(["team", "player_id"])["wr_role"]
-    dvp_ix = dvp.set_index(["team", "position"])
-    proj = ranks.set_index("player_id")[["rank", "proj_pts"]]
-    rows = []
-    for name in config.MY_ROSTER:
-        m = ros[ros["name_key"] == _name_key(name)]
+class MatchupRows:
+    """Builds My Lineup-style matchup rows for any rostered player, so My Lineup
+    and Start/Sit show exactly the same columns and reads."""
+
+    def __init__(self, dvp: pd.DataFrame, slot: pd.DataFrame, ranks: pd.DataFrame,
+                 tags: pd.DataFrame | None = None, proj_all: pd.DataFrame | None = None):
+        ros = fetch.load_roster(config.SEASON)
+        ros = ros.assign(status_order=(ros["status"] != "ACT").astype(int),
+                         name_key=ros["full_name"].fillna("").map(_name_key))
+        self.ros = ros.sort_values(["status_order", "week"], ascending=[True, False])
+        self.opp = rankings.next_opponents().set_index("team")
+        self.tend = slot.set_index("team")["tendency"]
+        self.tag_by_id = {} if tags is None else tags[tags["tag"] != ""].set_index("player_id")["tag"].to_dict()
+        # WRs are matched against the opponent's WR1 or WR2 row when the player holds that role.
+        self.roles = defense.wr_roles(config.SEASON).set_index(["team", "player_id"])["wr_role"]
+        self.dvp_ix = dvp.set_index(["team", "position"])
+        self.rank = ranks.set_index("player_id")["rank"]
+        src = proj_all if proj_all is not None else ranks
+        self.proj = src.set_index("player_id")["proj_pts"]
+
+    def by_name(self, name: str) -> dict:
+        m = self.ros[self.ros["name_key"] == _name_key(name)]
         if m.empty:
-            rows.append({"name": name, "read": "Not found in roster file"})
-            continue
-        p = m.iloc[0]
+            return {"name": name, "read": "Not found in roster file"}
+        return self.row(m.iloc[0])
+
+    def by_id(self, gsis_id: str) -> dict | None:
+        m = self.ros[self.ros["gsis_id"] == gsis_id]
+        return None if m.empty else self.row(m.iloc[0])
+
+    def row(self, p: pd.Series) -> dict:
         pos = "RB" if p["position"] == "FB" else p["position"]
-        row = {"name": p["full_name"], "position": pos, "team": p["team"], "status": p["status"]}
-        if p["team"] in opp.index:
-            o = opp.loc[p["team"]]
+        row = {"player_id": p["gsis_id"], "name": p["full_name"], "position": pos,
+               "team": p["team"], "status": p["status"]}
+        if p["team"] in self.opp.index:
+            o = self.opp.loc[p["team"]]
             row.update(opp=o["opp"], week=int(o["week"]), home=bool(o["home"]), bye=bool(o["bye"]))
             group = pos
             if pos == "WR":
-                role = roles.get((p["team"], p["gsis_id"]))
-                if role in defense.WR_ROLES and (o["opp"], role) in dvp_ix.index:
+                role = self.roles.get((p["team"], p["gsis_id"]))
+                if role in defense.WR_ROLES and (o["opp"], role) in self.dvp_ix.index:
                     group = role
             row["matchup_group"] = group
-            if (o["opp"], group) in dvp_ix.index:
-                d = dvp_ix.loc[(o["opp"], group)]
+            if (o["opp"], group) in self.dvp_ix.index:
+                d = self.dvp_ix.loc[(o["opp"], group)]
                 row.update(opp_rank=int(d["rank"]), opp_confidence=float(d["confidence"]),
                            opp_fp_pg=float(d["fp_pg"]), insight=d["insight"] or None,
                            insight_tone=d["insight_tone"] or None,
                            insight_effect=d["insight_effect"] or None,
                            insight_detail=d["insight_detail"] or None)
                 if pos in ("WR", "TE"):
-                    row["opp_slot"] = tend.get(o["opp"])
-                    tag = tag_by_id.get(p["gsis_id"])
+                    row["opp_slot"] = self.tend.get(o["opp"])
+                    tag = self.tag_by_id.get(p["gsis_id"])
                     if tag:
                         row["player_tag"] = tag
                         t = row["opp_slot"] or ""
@@ -96,11 +108,31 @@ def my_lineup(dvp: pd.DataFrame, slot: pd.DataFrame, ranks: pd.DataFrame,
                 if d["confidence"] < LOW_CONFIDENCE:
                     read += " (low confidence)"
                 row["read"] = read
-        if p["gsis_id"] in proj.index:
-            row.update(ovr_rank=int(proj.loc[p["gsis_id"], "rank"]),
-                       proj_pts=float(proj.loc[p["gsis_id"], "proj_pts"]))
-        rows.append(row)
-    return rows
+        if p["gsis_id"] in self.rank.index:
+            row["ovr_rank"] = int(self.rank[p["gsis_id"]])
+        if p["gsis_id"] in self.proj.index:
+            row["proj_pts"] = float(self.proj[p["gsis_id"]])
+        return row
+
+
+def my_lineup(rows: MatchupRows) -> list[dict]:
+    return [rows.by_name(n) for n in config.MY_ROSTER]
+
+
+def start_sit_pool(rows: MatchupRows, proj_all: pd.DataFrame) -> list[dict]:
+    """Matchup rows for every projectable player (active; QBs = team starters), plus
+    your own roster even if they fall outside that pool (e.g. on IR)."""
+    ids = list(proj_all["player_id"])
+    mine = [r.get("player_id") for r in my_lineup(rows)]
+    out, seen = [], set()
+    for pid in ids + [m for m in mine if m]:
+        if pid in seen:
+            continue
+        seen.add(pid)
+        r = rows.by_id(pid)
+        if r:
+            out.append(r)
+    return out
 
 
 def _clean(obj):
@@ -145,9 +177,11 @@ def compute() -> dict[str, object]:
     step("skill metrics"); cp, ry = skill_metrics.cpoe(), skill_metrics.ryoe()
     step("team volume"); volume = pace.volume_table()
     step("receiver tags"); tags = slot_perimeter.receiver_tags()
-    step("lineup"); lineup = my_lineup(dvp, slot, ranks, tags)
+    step("projections"); proj_all, _ = rankings.project_players(dvp)
+    step("lineup + start/sit"); mrows = MatchupRows(dvp, slot, ranks, tags, proj_all)
+    lineup = my_lineup(mrows)
+    start_sit = start_sit_pool(mrows, proj_all)
     step("strength of schedule"); sos = schedule.sos(dvp, lineup)
-    step("waivers"); proj, _ = rankings.project_players(dvp); wv = waivers.waiver_targets(proj, xfp, volume)
 
     pbp = fetch.load_pbp(config.SEASON)
     opp = rankings.next_opponents()
@@ -165,7 +199,6 @@ def compute() -> dict[str, object]:
         "min_routes": separation.MIN_ROUTES,
         "low_confidence": LOW_CONFIDENCE,
         "refresh_trigger_id": getattr(config, "REFRESH_TRIGGER_ID", None),
-        "waiver_depth": config.WAIVER_ROSTERED_DEPTH,
     }
     return {
         "META": meta,
@@ -173,7 +206,8 @@ def compute() -> dict[str, object]:
                        for t in config.TEAM_NAMES},
         "VOLUME_DATA": pace.to_json(volume),
         "SOS_DATA": sos,
-        "WAIVERS_DATA": waivers.to_json(wv),
+        "START_SIT_DATA": start_sit,
+        "MY_ROSTER_IDS": [r.get("player_id") for r in lineup if r.get("player_id")],
         "RECEIVER_TAGS": tags[tags["tag"] != ""][["player_id", "name", "position", "team", "tgts", "tgts_cur",
                                                   "middle_share", "tag"]].round(3).to_dict("records"),
         "SLOT_FACES": slot_faces,
