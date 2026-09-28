@@ -1077,17 +1077,24 @@ showTab(initialTab, {silent: true});
     Date.now() - Date.parse(run.fired_at) < RUN_TIMEOUT_MS;
 
   // One message per error code that has its own fix; everything else gets the generic line.
-  function explain(e) {
-    const code = e && e.code;
-    if (code === "needs_reauth") return "Reconnect Claude Code in claude.ai Settings → Connectors, then try again.";
+  // `step` says which call failed: reading the routine's status, or starting it.
+  function explain(e, step) {
+    const code = (e && e.code) || "unknown";
+    const tool = step === "fire" ? "fire_trigger" : "get_trigger";
+    const tag = ` [${code} · ${tool}]`;
+    const perm = `In claude.ai Settings → Connectors → Claude Code, set "${tool}"` +
+      (step === "fire" ? "" : ` and "fire_trigger"`) + ` to Always allow, then try again.`;
+    if (code === "approval_required") return "This action needs approval each time, which pages can't ask for. " + perm + tag;
+    if (code === "blocked_by_policy") return "This action is blocked for this page. " + perm +
+      " If an admin manages your account, they may need to allow it." + tag;
+    if (code === "needs_reauth") return "Reconnect Claude Code in claude.ai Settings → Connectors, then try again." + tag;
     if (code === "server_not_connected" || code === "selection_required")
-      return "Claude Code isn't connected for this page. Check claude.ai Settings → Connectors.";
+      return "Claude Code isn't connected for this page. Check claude.ai Settings → Connectors." + tag;
     if (code === "not_in_manifest" || code === "not_granted" || code === "consent_required")
-      return "Refreshing wasn't allowed for this page. Allow Claude Code when asked, then try again.";
-    if (code === "blocked_by_policy" || code === "approval_required") return "Your organization's policy blocks this action.";
-    if (code === "tool_error") return "The refresh routine couldn't be started: " + (e.message || "unknown error");
-    if (code === "server_unavailable" || code === "upstream_error") return "Couldn't reach Claude Code just now. Try again in a minute.";
-    return "Refresh failed" + (e && e.message ? ": " + e.message : ".");
+      return "Refreshing wasn't allowed for this page. Allow Claude Code when asked, then try again." + tag;
+    if (code === "tool_error") return "The refresh routine couldn't be started: " + (e.message || "unknown error") + tag;
+    if (code === "server_unavailable" || code === "upstream_error") return "Couldn't reach Claude Code just now. Try again in a minute." + tag;
+    return "Refresh failed" + (e && e.message ? ": " + e.message : ".") + tag;
   }
 
   function watch(firedAt) {
@@ -1096,7 +1103,14 @@ showTab(initialTab, {silent: true});
     const tick = async () => {
       let run;
       try { run = await lastRun(); } catch (e) {
-        // A status read failing doesn't mean the run failed; keep waiting quietly.
+        if (["approval_required", "blocked_by_policy", "not_in_manifest"].includes(e && e.code)) {
+          // Can't read progress here, but the run was started: the page reloads itself when it lands.
+          btn.disabled = false;
+          say("Refresh started. The page reloads by itself when the new data is ready (about 3–5 min).", "ok");
+          return;
+        }
+        // A status read failing doesn't mean the run failed; keep waiting quietly, up to the timeout.
+        if (Date.now() - firedAt > RUN_TIMEOUT_MS) { btn.disabled = false; say("Couldn't confirm the refresh finished. Check the routine in claude.ai.", "err"); return; }
         pollTimer = setTimeout(tick, POLL_MS * 2); return;
       }
       const mine = run && run.fired_at && Date.parse(run.fired_at) >= firedAt - 5000;
@@ -1118,9 +1132,13 @@ showTab(initialTab, {silent: true});
   btn.onclick = async () => {
     btn.disabled = true;
     say("Checking…");
+    let step = "status";
     try {
-      const run = await lastRun();
+      // The status check only prevents a double run; if it's refused, still try to start.
+      let run = null;
+      try { run = await lastRun(); } catch (e) { if (!["approval_required", "blocked_by_policy"].includes(e && e.code)) throw e; }
       if (running(run)) { watch(Date.parse(run.fired_at)); return; }   // don't start a second run
+      step = "fire";
       const firedAt = Date.now();
       await mcp.callTool(SERVER, "fire_trigger",
         {trigger_id: TRIGGER, text: "Manual refresh requested from the dashboard's Refresh data button."},
@@ -1128,7 +1146,7 @@ showTab(initialTab, {silent: true});
       watch(firedAt);
     } catch (e) {
       btn.disabled = false;
-      say(explain(e), "err");
+      say(explain(e, step), "err");
     }
   };
 })();
