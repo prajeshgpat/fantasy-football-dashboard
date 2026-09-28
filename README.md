@@ -70,11 +70,13 @@ data/                      gitignored cache (all re-downloadable)
 
 | Section | What it shows |
 |---|---|
+| Waivers | Top 5 probably-available players per position by projection, tagged with why (rising usage, buy-low vs xFP, plus matchup, team volume up, low usage). "Available" is estimated from `WAIVER_ROSTERED_DEPTH` and `ROSTERED_ELSEWHERE` in `config.py`. |
+| SOS | Every opponent for weeks 1-18 at each position (QB/RB/WR/WR1/WR2/TE), colored easy/hard, with rest-of-season, fantasy playoff (`FANTASY_PLAYOFF_WEEKS`) and played multipliers, plus the same grid for your roster. Future weeks blend this season with the 3-year baseline (baseline = 4 games). |
 | My Lineup | Each rostered player's next opponent, that defense's rank/confidence at the position, slot tendency, and a Plus / Tough / Neutral read ("low confidence" when confidence < 45). |
-| Offensive plays per game | Pass + run plays per game, current vs prior season. |
+| Offensive plays per game | Regulation plays/G (OT removed) vs last season, with a verdict on whether the change will last: neutral-script tempo, share of snaps trailing/leading by 9+, drives/G, plays/drive and head-coach changes, plus an expected rest-of-season plays/G. |
 | Separation vs targets per route | NGS `avg_separation` vs true TPRR (prior season, from `pbp_participation`, min 50 routes) or a targets ÷ snaps proxy (current season). Flags ±1.0 yd separation swings and +50% / −30% target-rate swings. |
 | Defense vs position | FP allowed per game, rank (1 = stingiest), 3-year baseline, confidence score, split QB / RB / WR / WR1 / WR2 / TE, plus a funnel insight per defense. |
-| Slot vs perimeter | WR+TE points allowed by `pass_location` (middle vs left/right) — a proxy, read relatively. |
+| Slot vs perimeter | WR+TE points allowed by `pass_location` (middle vs left/right) — a proxy, read relatively. Shows each defense's next opponent and that offense's top receivers, and tags every WR/TE as Slot / Mixed / Perimeter by middle-target share (top/bottom quarter at the position), with a ✓ when his style fits where the next opponent is vulnerable. |
 | Expected vs actual FP | xFP calibrated on the last completed season; negative delta = buy-low, positive = regression risk. |
 | Red zone | Targets/carries inside the 20 and 10, TDs, and TD-regression candidates. |
 | CPOE & RYOE | NGS season aggregates. |

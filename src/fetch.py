@@ -27,6 +27,7 @@ PBP_COLUMNS = [
     "passing_yards", "rushing_yards", "receiving_yards",
     "pass_touchdown", "rush_touchdown", "interception",
     "fumble_lost", "fumbled_1_player_id", "wp",
+    "qtr", "drive", "game_seconds_remaining", "score_differential",
 ]
 
 

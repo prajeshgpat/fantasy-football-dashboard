@@ -16,8 +16,8 @@ from pathlib import Path
 import pandas as pd
 
 import config
-from src import (defense, expected_points, fetch, rankings, redzone, scoring,
-                 separation, skill_metrics, slot_perimeter)
+from src import (defense, expected_points, fetch, pace, rankings, redzone, schedule, scoring,
+                 separation, skill_metrics, slot_perimeter, waivers)
 
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE = ROOT / "templates" / "dashboard.html"
@@ -25,16 +25,6 @@ TEMPLATE = ROOT / "templates" / "dashboard.html"
 PLUS_RANK = 23     # opponent rank >= this (generous) -> Plus matchup
 TOUGH_RANK = 10    # opponent rank <= this (stingy)   -> Tough matchup
 LOW_CONFIDENCE = 45
-
-
-def plays_per_game() -> list[dict]:
-    def ppg(year):
-        pbp = fetch.load_pbp(year)
-        p = pbp[pbp["play_type"].isin(["pass", "run"])]
-        return p.groupby(["posteam", "game_id"]).size().groupby("posteam").mean()
-    df = pd.DataFrame({"current": ppg(config.SEASON), "prior": ppg(config.PRIOR_SEASON)})
-    df["delta"] = df["current"] - df["prior"]
-    return df.rename_axis("team").reset_index().round(2).to_dict("records")
 
 
 def _name_key(name: str) -> str:
@@ -56,13 +46,15 @@ def defense_rows(dvp: pd.DataFrame) -> list[dict]:
     return rows
 
 
-def my_lineup(dvp: pd.DataFrame, slot: pd.DataFrame, ranks: pd.DataFrame) -> list[dict]:
+def my_lineup(dvp: pd.DataFrame, slot: pd.DataFrame, ranks: pd.DataFrame,
+              tags: pd.DataFrame | None = None) -> list[dict]:
     ros = fetch.load_roster(config.SEASON)
     ros = ros.assign(status_order=(ros["status"] != "ACT").astype(int),
                      name_key=ros["full_name"].fillna("").map(_name_key))
     ros = ros.sort_values(["status_order", "week"], ascending=[True, False])
     opp = rankings.next_opponents().set_index("team")
     tend = slot.set_index("team")["tendency"]
+    tag_by_id = {} if tags is None else tags[tags["tag"] != ""].set_index("player_id")["tag"].to_dict()
     # WRs are matched against the opponent's WR1 or WR2 row when the player holds that role.
     roles = defense.wr_roles(config.SEASON).set_index(["team", "player_id"])["wr_role"]
     dvp_ix = dvp.set_index(["team", "position"])
@@ -94,6 +86,11 @@ def my_lineup(dvp: pd.DataFrame, slot: pd.DataFrame, ranks: pd.DataFrame) -> lis
                            insight_detail=d["insight_detail"] or None)
                 if pos in ("WR", "TE"):
                     row["opp_slot"] = tend.get(o["opp"])
+                    tag = tag_by_id.get(p["gsis_id"])
+                    if tag:
+                        row["player_tag"] = tag
+                        t = row["opp_slot"] or ""
+                        row["slot_fit"] = ("Slot" in t and tag == "Slot") or ("Perimeter" in t and tag == "Perimeter")
                 read = ("Plus matchup" if d["rank"] >= PLUS_RANK
                         else "Tough matchup" if d["rank"] <= TOUGH_RANK else "Neutral")
                 if d["confidence"] < LOW_CONFIDENCE:
@@ -146,30 +143,40 @@ def compute() -> dict[str, object]:
     step("expected points"); xfp = expected_points.expected_vs_actual()
     step("red zone"); rz = redzone.red_zone()
     step("skill metrics"); cp, ry = skill_metrics.cpoe(), skill_metrics.ryoe()
-    step("plays per game"); plays = plays_per_game()
-    step("lineup"); lineup = my_lineup(dvp, slot, ranks)
+    step("team volume"); volume = pace.volume_table()
+    step("receiver tags"); tags = slot_perimeter.receiver_tags()
+    step("lineup"); lineup = my_lineup(dvp, slot, ranks, tags)
+    step("strength of schedule"); sos = schedule.sos(dvp, lineup)
+    step("waivers"); proj, _ = rankings.project_players(dvp); wv = waivers.waiver_targets(proj, xfp, volume)
 
     pbp = fetch.load_pbp(config.SEASON)
     opp = rankings.next_opponents()
+    slot_faces = slot_perimeter.opponent_receivers(slot, tags, opp)
     meta = {
         "season": config.SEASON,
         "prior_season": config.PRIOR_SEASON,
         "history_seasons": config.HISTORY_SEASONS,
         "through_week": int(pbp["week"].max()) if len(pbp) else 0,
         "next_week": int(opp["week"].min()) if len(opp) else None,
-        "generated": dt.datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "generated": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "league_size": config.LEAGUE_SIZE,
         "scoring": config.SCORING,
         "tprr_true_available": sep["tprr"].notna().any(),
         "min_routes": separation.MIN_ROUTES,
         "low_confidence": LOW_CONFIDENCE,
         "refresh_trigger_id": getattr(config, "REFRESH_TRIGGER_ID", None),
+        "waiver_depth": config.WAIVER_ROSTERED_DEPTH,
     }
     return {
         "META": meta,
         "TEAMS_DATA": {t: {"name": config.TEAM_NAMES[t], "color": config.TEAM_COLORS[t]}
                        for t in config.TEAM_NAMES},
-        "PLAYS_DATA": plays,
+        "VOLUME_DATA": pace.to_json(volume),
+        "SOS_DATA": sos,
+        "WAIVERS_DATA": waivers.to_json(wv),
+        "RECEIVER_TAGS": tags[tags["tag"] != ""][["player_id", "name", "position", "team", "tgts", "tgts_cur",
+                                                  "middle_share", "tag"]].round(3).to_dict("records"),
+        "SLOT_FACES": slot_faces,
         "SEPARATION_DATA": separation.to_json(sep),
         "DEFENSE_DATA": defense_rows(dvp),
         "SLOT_DATA": slot_perimeter.to_json(slot),

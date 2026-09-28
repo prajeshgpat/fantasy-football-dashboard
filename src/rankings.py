@@ -71,6 +71,16 @@ def _starting_qbs(df: pd.DataFrame) -> set[str]:
 
 def build_rankings(dvp: pd.DataFrame | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Returns (top-200 rankings, rookie/no-data gaps)."""
+    df, gaps = project_players(dvp)
+    df = df.head(TOP_N).reset_index(drop=True)
+    df["rank"] = df.index + 1
+    df["tier"] = df["rank"].map(lambda r: next(name for cap, name in TIERS if r <= cap))
+    return df, gaps
+
+
+def project_players(dvp: pd.DataFrame | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Every eligible player (ACT, QBs = starters) with skill_ppg, matchup and proj_pts,
+    sorted by proj_pts. Returns (projections, rookie/no-data gaps)."""
     ros = scoring.roster_lookup(config.SEASON)
     ros = ros[(ros["status"] == "ACT") & ros["position"].isin(scoring.SKILL_POSITIONS)]
 
@@ -112,10 +122,7 @@ def build_rankings(dvp: pd.DataFrame | None = None) -> tuple[pd.DataFrame, pd.Da
     df["matchup_mult"] = mult.fillna(1.0)   # bye week / unknown opponent -> neutral
     df["proj_pts"] = df["skill_ppg"] * df["matchup_mult"]
 
-    df = df.sort_values("proj_pts", ascending=False).head(TOP_N).reset_index(drop=True)
-    df["rank"] = df.index + 1
-    df["tier"] = df["rank"].map(lambda r: next(name for cap, name in TIERS if r <= cap))
-    return df, gaps
+    return df.sort_values("proj_pts", ascending=False).reset_index(drop=True), gaps
 
 
 def to_json(df: pd.DataFrame) -> list[dict]:

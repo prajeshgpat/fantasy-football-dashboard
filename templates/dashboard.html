@@ -23,6 +23,7 @@
   --good: #1a7f37; --good-bg: #e3f3e6;
   --bad: #c0362c;  --bad-bg: #fbe7e5;
   --neutral-bg: #f0efec;
+  --warn: #9a6200; --warn-bg: #fbf0d9;
   --div-lo: #2a78d6; --div-hi: #e34948;
 }
 @media (prefers-color-scheme: dark) {
@@ -33,6 +34,7 @@
     --accent: #3987e5;
     --pos-qb: #3987e5; --pos-rb: #d95926; --pos-wr: #199e70; --pos-te: #9085e9;
     --good: #5cc275; --good-bg: #173a22; --bad: #ff7b72; --bad-bg: #44201d; --neutral-bg: #383835;
+    --warn: #e0a940; --warn-bg: #3d2e10;
     --div-lo: #3987e5; --div-hi: #e66767;
   }
 }
@@ -43,6 +45,7 @@
   --accent: #3987e5;
   --pos-qb: #3987e5; --pos-rb: #d95926; --pos-wr: #199e70; --pos-te: #9085e9;
   --good: #5cc275; --good-bg: #173a22; --bad: #ff7b72; --bad-bg: #44201d; --neutral-bg: #383835;
+    --warn: #e0a940; --warn-bg: #3d2e10;
   --div-lo: #3987e5; --div-hi: #e66767;
 }
 * { box-sizing: border-box; }
@@ -58,6 +61,8 @@ header {
 .hdr h1 { font-size: 17px; margin: 0; }
 .hdr .meta { color: var(--text-2); font-size: 12px; }
 #themeBtn { margin-left: auto; }
+.updated { margin-left: auto; }
+.updated + .refresh { margin-left: 0; }
 .refresh { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .refresh[hidden] { display: none; }
 .refresh + #themeBtn { margin-left: 0; }
@@ -125,6 +130,19 @@ tr.tier-row td:first-child { background: var(--surface-2); }
 .chip.good { background: var(--good-bg); color: var(--good); }
 .chip.bad { background: var(--bad-bg); color: var(--bad); }
 .chip.neu { background: var(--neutral-bg); color: var(--text-2); }
+.chip.warn { background: var(--warn-bg); color: var(--warn); }
+.chip + .chip { margin-left: 4px; }
+.tag { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 4px; border: 1px solid var(--border); color: var(--text-2); margin: 1px 2px 1px 0; }
+.tag.fit { border-color: var(--good); color: var(--good); }
+.updated { font-size: 12px; color: var(--text-2); white-space: nowrap; }
+.hint { font-size: 12px; color: var(--text-3); }
+/* strength of schedule grid */
+.sos td.wk, .sos th.wk { text-align: center; padding: 3px 2px; min-width: 44px; }
+.sos th.po { background: color-mix(in srgb, var(--accent) 18%, var(--surface-2)); color: var(--text); }
+.sos .cell { display: block; border-radius: 4px; padding: 2px 0; font-size: 11px; line-height: 1.2; }
+.sos .cell small { display: block; font-size: 10px; color: var(--text-3); }
+.sos .cell.past { opacity: .45; }
+.sos .cell.bye { color: var(--text-3); }
 .pos-num { color: var(--good); } .neg-num { color: var(--bad); }
 .muted { color: var(--text-3); }
 .tier-row td { background: var(--surface-2); font-weight: 600; text-align: left; color: var(--text-2); font-size: 12px; }
@@ -145,6 +163,7 @@ details.note[open] summary { margin-bottom: 4px; }
   <div class="hdr">
     <h1>Fantasy Football Dashboard</h1>
     <span class="meta" id="meta"></span>
+    <span class="updated" id="updated"></span>
     <span class="refresh" id="refreshBox" hidden>
       <button id="refreshBtn" title="Re-download nflverse data and rebuild this page (takes a few minutes)">Refresh data</button>
       <span class="refresh-status" id="refreshStatus" role="status" aria-live="polite"></span>
@@ -152,6 +171,8 @@ details.note[open] summary { margin-bottom: 4px; }
     <button id="themeBtn" title="Toggle light/dark">Theme</button>
     <div class="tabs" id="tabs" role="tablist">
       <button data-tab="lineup" role="tab">My Lineup</button>
+      <button data-tab="waivers" role="tab">Waivers</button>
+      <button data-tab="sos" role="tab">SOS</button>
       <button data-tab="plays" role="tab">Plays/G</button>
       <button data-tab="separation" role="tab">Separation</button>
       <button data-tab="defense" role="tab">Def vs Pos</button>
@@ -171,11 +192,32 @@ details.note[open] summary { margin-bottom: 4px; }
   <div class="tbl-wrap"><table id="lineupTbl"></table></div>
 </section>
 
+<section id="waivers" role="tabpanel" hidden>
+  <h2>Waiver Targets</h2>
+  <p class="desc">The five best probably-available players at each position, by projected points, with the reasons to add them. Opportunity = dropbacks (QB), carries + targets (RB), targets (WR/TE).</p>
+  <details class="note"><summary><b>How "available" is estimated</b></summary>There's no league connection, so a player counts as rostered if he's in the top <span id="waiverDepth"></span> at his position by current projection or by 3-year scoring (what got drafted), is an early-round rookie, is on your roster, or is listed in <code>ROSTERED_ELSEWHERE</code> in <code>config.py</code>. Add names there as you learn they're taken.</details>
+  <div class="controls"><span class="seg" data-posfilter="waiv" data-positions="All,QB,RB,WR,TE"></span></div>
+  <div class="tbl-wrap"><table id="waivTbl"></table></div>
+</section>
+
+<section id="sos" role="tabpanel" hidden>
+  <h2>Strength of Schedule</h2>
+  <p class="desc">Every opponent for weeks 1–18, colored by how the defense treats the position: green = easier than average, red = harder. The number under each opponent is its rank vs the position (1 = stingiest). Fantasy playoff weeks are highlighted. Multipliers are average FP allowed vs league (×1.10 = 10% more than average).</p>
+  <div class="note" id="sosNote"></div>
+  <h3>My roster</h3>
+  <div class="tbl-wrap sos" style="max-height:none"><table id="sosRosterTbl"></table></div>
+  <h3>All teams by position</h3>
+  <div class="controls"><span class="seg" data-posfilter="sos" data-positions="QB,RB,WR,WR1,WR2,TE"></span></div>
+  <div class="tbl-wrap sos" style="max-height:720px"><table id="sosTbl"></table></div>
+</section>
+
 <section id="plays" role="tabpanel" hidden>
-  <h2>Offensive Plays Per Game</h2>
-  <p class="desc">Pass + run plays per game, regular season, special teams excluded. Points above the dashed line are running more plays than last season.</p>
-  <div class="controls"><button data-reset="playsChart">Reset zoom</button></div>
-  <div class="chart-wrap"><canvas id="playsChart" aria-label="Scatter of plays per game, prior season vs current season, by team"></canvas></div>
+  <h2>Offensive Plays Per Game — Is It Sustainable?</h2>
+  <p class="desc">Regulation plays per game (overtime removed) this season vs last. A jump that comes from a faster neutral-script tempo, usually a new scheme, tends to stick. A jump from playing from behind, or from overtime, usually fades. Expected ROS is what to plan on for the rest of the season: it leans on this season more when tempo explains the change.</p>
+  <details class="note"><summary><b>How the verdict is decided</b></summary><b>Neutral tempo</b> = seconds between snaps on the same drive while win probability is 20–80% (garbage time and clock-killing excluded); 1.5s faster or slower counts as a real change. <b>Trailing 9+</b> = share of regulation snaps played down two scores or more; an 8-point rise explains extra volume as game script. Plays-per-drive and drives-per-game say whether the offense is sustaining drives or just getting more possessions. A change under 3 plays/G is Stable. Three games is a small sample, so treat early verdicts as leanings.</details>
+  <div class="legend" id="playsLegend"></div>
+  <div class="controls"><button data-reset="playsChart">Reset zoom</button><span class="hint">Pinch or Ctrl + scroll to zoom · drag to pan once zoomed · tap a point to label it</span></div>
+  <div class="chart-wrap"><canvas id="playsChart" aria-label="Scatter of regulation plays per game, prior season vs current season, by team, colored by verdict"></canvas></div>
   <div class="tbl-wrap"><table id="playsTbl"></table></div>
 </section>
 
@@ -210,6 +252,10 @@ details.note[open] summary { margin-bottom: 4px; }
   <div class="controls"><button data-reset="slotChart">Reset zoom</button></div>
   <div class="chart-wrap"><canvas id="slotChart" aria-label="Scatter of perimeter vs slot FP allowed by defense"></canvas></div>
   <div class="tbl-wrap"><table id="slotTbl"></table></div>
+  <h3>Receiver alignment tags</h3>
+  <p class="desc">Each WR/TE's share of targets thrown to the middle (this season + last). Top quarter at the position = <b>Slot</b>, bottom quarter = <b>Perimeter</b>. A green tag means his style lines up with where his next opponent is vulnerable.</p>
+  <div class="controls"><span class="seg" data-posfilter="rtag" data-positions="All,WR,TE"></span><input type="search" id="rtagSearch" placeholder="Search player or team"><label><input type="checkbox" id="rtagFitOnly"> Good fits only</label></div>
+  <div class="tbl-wrap"><table id="rtagTbl"></table></div>
 </section>
 
 <section id="xfp" role="tabpanel" hidden>
@@ -255,7 +301,11 @@ details.note[open] summary { margin-bottom: 4px; }
 <script>
 const META = {{META}};
 const TEAMS = {{TEAMS_DATA}};
-const PLAYS = {{PLAYS_DATA}};
+const VOLUME = {{VOLUME_DATA}};
+const SOS = {{SOS_DATA}};
+const WAIVERS = {{WAIVERS_DATA}};
+const RTAGS = {{RECEIVER_TAGS}};
+const SLOT_FACES = {{SLOT_FACES}};
 const SEP = {{SEPARATION_DATA}};
 const DEF = {{DEFENSE_DATA}};
 const SLOT = {{SLOT_DATA}};
@@ -300,7 +350,16 @@ const posBadge = p => p ? `<span class="pos" style="--c:var(${POS_VAR[p] || "--t
 const teamName = t => TEAMS[t] ? TEAMS[t].name : t;
 
 $("meta").textContent = `${META.season} season · data through week ${META.through_week}` +
-  (META.next_week ? ` · next: week ${META.next_week}` : "") + ` · ${META.league_size}-team ${META.scoring} · built ${META.generated}`;
+  (META.next_week ? ` · next: week ${META.next_week}` : "") + ` · ${META.league_size}-team ${META.scoring}`;
+(function stampUpdated() {
+  const t = new Date(META.generated);
+  if (isNaN(t)) return;
+  const when = t.toLocaleString(undefined, {weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit"});
+  const mins = Math.round((Date.now() - t) / 60000);
+  const rel = mins < 1 ? "just now" : mins < 60 ? `${mins} min ago` : mins < 48 * 60 ? `${Math.round(mins / 60)} h ago` : `${Math.round(mins / 1440)} days ago`;
+  $("updated").textContent = `Last updated ${when} (${rel})`;
+  $("updated").title = "When the data on this page was last rebuilt from nflverse";
+})();
 
 // Diverging chip for a 1..32 defensive rank (1 = stingy/blue, 32 = generous/red).
 function rankCell(r) {
@@ -326,7 +385,7 @@ function makeTable(el, cols, getRows, opts = {}) {
       });
     }
     const head = "<thead><tr>" + cols.map(c =>
-      `<th data-key="${c.key}" class="${c.l ? "l " : ""}${state.key === c.key ? (state.dir > 0 ? "asc" : "desc") : ""}" title="${esc(c.title || "")}">${c.label}</th>`
+      `<th data-key="${c.key}" class="${c.l ? "l " : ""}${c.th ? c.th + " " : ""}${state.key === c.key ? (state.dir > 0 ? "asc" : "desc") : ""}" title="${esc(c.title || "")}">${c.label}</th>`
     ).join("") + "</tr></thead>";
     let body = "", lastGroup;
     for (const r of rows) {
@@ -460,9 +519,21 @@ function drawChart(id) {
         legend: {display: false},
         diag: {on: !!cfg.diag},
         tooltip: {callbacks: {label: c => cfg.tip(c.raw)}},
+        // Calmer zoom: wheel needs Ctrl (trackpad pinch sends Ctrl+wheel), a slow step, and
+        // dragging only pans once zoomed in, so one-finger scrolling moves the page, not the chart.
         zoom: {
-          pan: {enabled: true, mode: "xy"},
-          zoom: {wheel: {enabled: true}, pinch: {enabled: true}, mode: "xy"},
+          pan: {enabled: false, mode: "xy", threshold: 10},
+          zoom: {
+            wheel: {enabled: true, speed: 0.04, modifierKey: "ctrl"},
+            pinch: {enabled: true},
+            mode: "xy",
+            onZoomComplete: ({chart}) => {
+              const zoomed = chart.isZoomedOrPanned();
+              if (chart.options.plugins.zoom.pan.enabled !== zoomed) {
+                chart.options.plugins.zoom.pan.enabled = zoomed; chart.update("none");
+              }
+            },
+          },
         },
       },
       onClick: (e, els, chart) => {
@@ -476,7 +547,15 @@ function drawChart(id) {
   });
 }
 function redrawCharts() { Object.keys(chartBuilders).forEach(drawChart); }
-document.querySelectorAll("[data-reset]").forEach(b => b.onclick = () => charts[b.dataset.reset] && charts[b.dataset.reset].resetZoom());
+document.querySelectorAll("[data-reset]").forEach(b => b.onclick = () => {
+  const c = charts[b.dataset.reset]; if (!c) return;
+  c.resetZoom(); c.options.plugins.zoom.pan.enabled = false; c.update("none");
+});
+// Every chart gets the same zoom hint next to its reset button.
+document.querySelectorAll("[data-reset]").forEach(b => {
+  if (!b.parentElement.querySelector(".hint")) b.insertAdjacentHTML("afterend",
+    '<span class="hint">Pinch or Ctrl + scroll to zoom · drag to pan once zoomed</span>');
+});
 
 // Flag the n most extreme points by a scoring function so only they get labels.
 function markExtremes(points, score, n) {
@@ -511,26 +590,53 @@ makeTable($("lineupTbl"), [
   {key: "status", label: "Status", fmt: v => v === "ACT" ? "ACT" : `<span class="chip bad">${esc(v || "—")}</span>`},
   {key: "opp_fp_pg", label: "Opp FP/G", fmt: f(1)},
   {key: "opp_confidence", label: "Conf", fmt: v => v == null ? "—" : `<span class="${v < META.low_confidence ? "muted" : ""}">${v.toFixed(0)}</span>`},
-  {key: "opp_slot", label: "Opp slot tendency", l: 1, fmt: v => v ? esc(v) : '<span class="muted">—</span>'},
+  {key: "opp_slot", label: "Opp slot tendency", l: 1, fmt: (v, r) => !v ? '<span class="muted">—</span>'
+    : esc(v) + (r.player_tag ? ` <span class="tag${r.slot_fit ? " fit" : ""}" title="${r.slot_fit ? "His style matches where this defense is vulnerable" : "His target location"}">${esc(r.player_tag)}${r.slot_fit ? " ✓" : ""}</span>` : "")},
   {key: "ovr_rank", label: "Ovr rank", fmt: v => v ?? '<span class="muted">—</span>'},
 ], () => LINEUP);
 
-// ---------- 5.1 plays per game ----------
+// ---------- 5.1 plays per game / sustainability ----------
+const VERDICT = {
+  real:   {label: "Real change (trust it)",   color: "--good", shape: "circle", chip: "good"},
+  script: {label: "Game script / one-off",     color: "--bad",  shape: "triangle", chip: "bad"},
+  watch:  {label: "Likely to revert",           color: "--warn", shape: "rect", chip: "warn"},
+  stable: {label: "Stable",                     color: "--text-3", shape: "rectRot", chip: "neu"},
+};
+$("playsLegend").innerHTML = Object.values(VERDICT).map(v =>
+  `<span class="${{circle: "dot", triangle: "tri", rect: "", rectRot: "dia"}[v.shape]}" style="--c:var(${v.color})">${v.label}</span>`).join("");
 scatter("playsChart", () => ({
-  x: `Plays/G ${META.prior_season}`, y: `Plays/G ${META.season}`, diag: true,
-  data: {datasets: [{
-    data: markExtremes(PLAYS.filter(r => r.current != null && r.prior != null)
-      .map(r => ({x: r.prior, y: r.current, name: r.team, delta: r.delta})), p => Math.abs(p.delta), 8),
-    backgroundColor: css("--accent"),
-  }]},
-  tip: d => `${teamName(d.name)} (${d.name}): ${d.y.toFixed(1)} vs ${d.x.toFixed(1)} (${d.delta > 0 ? "+" : ""}${d.delta.toFixed(1)})`,
+  x: `Regulation plays/G ${META.prior_season}`, y: `Regulation plays/G ${META.season}`, diag: true,
+  data: {datasets: Object.entries(VERDICT).map(([tone, v]) => ({
+    label: v.label,
+    data: markExtremes(VOLUME.filter(r => r.tone === tone && r.reg_plays_pg != null && r.reg_plays_pg_prior != null)
+      .map(r => ({x: r.reg_plays_pg_prior, y: r.reg_plays_pg, name: r.team, delta: r.reg_delta, verdict: r.verdict})),
+      p => Math.abs(p.delta), tone === "stable" ? 0 : 8),
+    backgroundColor: css(v.color), pointStyle: v.shape,
+  }))},
+  tip: d => `${teamName(d.name)}: ${d.y.toFixed(1)} vs ${d.x.toFixed(1)} (${d.delta > 0 ? "+" : ""}${d.delta.toFixed(1)}) · ${d.verdict}`,
 }));
+const secFmt = (cur, r, priorKey) => cur == null ? '<span class="muted">—</span>'
+  : `${cur.toFixed(1)}s <span class="muted">(${r[priorKey] != null ? r[priorKey].toFixed(1) + "s" : "—"})</span>`;
+const pctPair = (k) => (v, r) => v == null ? '<span class="muted">—</span>'
+  : `${(v * 100).toFixed(0)}% <span class="muted">(${r[k] != null ? (r[k] * 100).toFixed(0) + "%" : "—"})</span>`;
 makeTable($("playsTbl"), [
-  {key: "team", label: "Team", l: 1, fmt: v => `${esc(v)} <span class="muted">${esc(teamName(v))}</span>`},
-  {key: "current", label: `${META.season} plays/G`, fmt: f(1)},
-  {key: "prior", label: `${META.prior_season} plays/G`, fmt: f(1)},
-  {key: "delta", label: "Change", fmt: signed(1)},
-], () => PLAYS, {sortKey: "current"});
+  {key: "team", label: "Team", l: 1, fmt: (v, r) => `${esc(v)} <span class="muted">${esc(teamName(v))}</span>` +
+    (r.new_coach ? ` <span class="chip neu" title="Head coach changed since last season">New HC</span>` : "")},
+  {key: "verdict", label: "Verdict", l: 1, cls: "wrap", fmt: (v, r) =>
+    `<span class="chip ${VERDICT[r.tone] ? VERDICT[r.tone].chip : "neu"}">${esc(v)}</span><span class="sub">${esc(r.reason)}</span>`},
+  {key: "reg_plays_pg", label: `Plays/G ${META.season}`, fmt: f(1), title: "Regulation only (overtime removed)"},
+  {key: "reg_plays_pg_prior", label: `Plays/G ${META.prior_season}`, fmt: f(1)},
+  {key: "reg_delta", label: "Δ", fmt: signed(1)},
+  {key: "expected_pg", label: "Expected ROS", fmt: f(1), title: "Plays/G to plan on for the rest of the season"},
+  {key: "neutral_sec_per_play", label: "Neutral tempo (last yr)", fmt: (v, r) => secFmt(v, r, "neutral_sec_per_play_prior"),
+   title: "Seconds between snaps in neutral script; lower = faster"},
+  {key: "trail_share", label: "Trailing 9+ (last yr)", fmt: pctPair("trail_share_prior"), title: "Share of regulation snaps played down two scores or more"},
+  {key: "lead_share", label: "Leading 9+ (last yr)", fmt: pctPair("lead_share_prior")},
+  {key: "drives_pg", label: "Drives/G (last yr)", fmt: (v, r) => v == null ? "—" : `${v.toFixed(1)} <span class="muted">(${r.drives_pg_prior?.toFixed(1) ?? "—"})</span>`},
+  {key: "plays_per_drive", label: "Plays/drive (last yr)", fmt: (v, r) => v == null ? "—" : `${v.toFixed(1)} <span class="muted">(${r.plays_per_drive_prior?.toFixed(1) ?? "—"})</span>`},
+  {key: "ot_plays", label: "OT snaps", fmt: f(0)},
+  {key: "games", label: "G"},
+], () => VOLUME, {sortKey: "reg_delta"});
 
 // ---------- 5.2 separation ----------
 let sepSeason = "cur";
@@ -623,8 +729,46 @@ makeTable($("slotTbl"), [
   {key: "diff", label: "Slot − Perim", fmt: signed(1)},
   {key: "rel_z", label: "vs league (z)", fmt: signed(2)},
   {key: "tendency", label: "Tendency", l: 1},
+  {key: "faces", label: "Faces this week", l: 1, cls: "wrap", fmt: (v, r) => {
+    const fc = SLOT_FACES[r.team];
+    if (!fc) return '<span class="muted">—</span>';
+    const head = `${fc.bye ? '<span class="chip neu">BYE</span> then ' : ""}${fc.home ? "vs" : "@"} <b>${esc(fc.opp)}</b> <span class="muted">wk ${fc.week}</span>`;
+    const recv = fc.receivers.map(x => `<span class="tag${x.fit ? " fit" : ""}" title="${(x.middle_share * 100).toFixed(0)}% of targets over the middle">${esc(x.name)} · ${x.position}${x.tag ? " · " + x.tag : ""}${x.fit ? " ✓" : ""}</span>`).join("");
+    return head + (recv ? `<span class="sub">${recv}</span>` : "");
+  }},
   {key: "games", label: "G"},
-], () => SLOT, {sortKey: "rel_z"});
+], () => SLOT.map(r => ({...r, faces: SLOT_FACES[r.team] ? SLOT_FACES[r.team].opp : null})), {sortKey: "rel_z"});
+
+// Next opponent for every offense, from the full schedule.
+const NEXT_OPP = {};
+Object.entries(SOS.schedule).forEach(([team, wks]) => {
+  const n = wks.find(w => !w.played && w.opp);
+  if (n) NEXT_OPP[team] = n;
+});
+const SLOT_TEND = Object.fromEntries(SLOT.map(r => [r.team, r.tendency]));
+const RTAG_ROWS = RTAGS.map(r => {
+  const n = NEXT_OPP[r.team] || null, tend = n ? SLOT_TEND[n.opp] || "" : "";
+  const fit = (tend.includes("Slot") && r.tag === "Slot") || (tend.includes("Perimeter") && r.tag === "Perimeter");
+  return {...r, next_opp: n ? n.opp : null, next_week: n ? n.week : null, next_home: n ? n.home : null, opp_tendency: tend || null, fit};
+});
+const renderRtag = makeTable($("rtagTbl"), [
+  {key: "name", label: "Player", l: 1},
+  {key: "position", label: "Pos", fmt: posBadge},
+  {key: "team", label: "Team"},
+  {key: "tag", label: "Tag", l: 1, fmt: (v, r) => `<span class="tag${r.fit ? " fit" : ""}">${esc(v)}${r.fit ? " ✓" : ""}</span>`},
+  {key: "middle_share", label: "Middle tgt share", fmt: pct(0)},
+  {key: "tgts", label: "Tgts (2 yrs)", fmt: f(0)},
+  {key: "tgts_cur", label: `Tgts ${META.season}`, fmt: f(0)},
+  {key: "next_opp", label: "Next opp", l: 1, fmt: (v, r) => v ? `${r.next_home ? "vs" : "@"} ${esc(v)} <span class="muted">wk ${r.next_week}</span>` : "—"},
+  {key: "opp_tendency", label: "Opp tendency", l: 1, fmt: v => v ? esc(v) : "—"},
+], () => {
+  const q = $("rtagSearch").value.trim().toLowerCase();
+  return byPos("rtag", RTAG_ROWS).filter(r => (!$("rtagFitOnly").checked || r.fit) &&
+    (!q || r.name.toLowerCase().includes(q) || r.team.toLowerCase() === q));
+}, {sortKey: "tgts_cur"});
+onPos("rtag", renderRtag);
+$("rtagSearch").oninput = renderRtag;
+$("rtagFitOnly").onchange = renderRtag;
 
 // ---------- 5.6 xFP ----------
 scatter("xfpChart", () => {
@@ -720,8 +864,72 @@ $("gapsNote").innerHTML = GAPS.length
     GAPS.map(g => `${esc(g.full_name)} (${g.position}, ${g.team})`).join(", ")
   : "No active players are missing play-by-play data.";
 
+// ---------- waivers ----------
+$("waiverDepth").textContent = Object.entries(META.waiver_depth).map(([p, n]) => `${n} ${p}s`).join(", ");
+const TAG_TONE = {"Rising usage": "good", "Buy-low (under xFP)": "good", "Plus matchup": "good", "Team volume up": "good",
+                  "Back from injury": "warn", "Low usage": "bad", "Rookie": "neu"};
+const renderWaiv = makeTable($("waivTbl"), [
+  {key: "pos_rank", label: "#"},
+  {key: "full_name", label: "Player", l: 1},
+  {key: "position", label: "Pos", fmt: posBadge},
+  {key: "team", label: "Team"},
+  {key: "tags", label: "Why add him", l: 1, cls: "wrap", fmt: v => (v || []).length
+    ? v.map(t => `<span class="chip ${TAG_TONE[t] || "neu"}">${esc(t)}</span>`).join("") : '<span class="muted">Best projection left</span>'},
+  {key: "proj_pts", label: "Proj", fmt: v => `<b>${v.toFixed(1)}</b>`},
+  {key: "opp", label: "Next opp", fmt: (v, r) => r.bye ? '<span class="chip neu">BYE</span>' : esc(v || "—")},
+  {key: "opp_rank", label: "Opp rank", fmt: rankCell},
+  {key: "games", label: "G", fmt: f(0)},
+  {key: "ppg", label: `PPG ${META.season}`, fmt: f(1)},
+  {key: "ppg_3yr", label: "PPG 3-yr", fmt: f(1)},
+  {key: "opp_last2", label: "Opp/G last 2 (before)", fmt: (v, r) => v == null ? "—"
+    : `${v.toFixed(1)} <span class="muted">(${r.opp_earlier != null ? r.opp_earlier.toFixed(1) : "—"})</span>`,
+   title: "Opportunities per game in his last 2 games, with earlier games in parentheses"},
+  {key: "xfp_pg", label: "xFP/G", fmt: f(1)},
+  {key: "team_volume", label: "Team volume", l: 1, fmt: (v, r) => v ? `<span class="chip ${VERDICT[r.team_volume_tone] ? VERDICT[r.team_volume_tone].chip : "neu"}">${esc(v)}</span>` : "—"},
+], () => byPos("waiv", WAIVERS), {groupBy: "position"});
+onPos("waiv", renderWaiv);
+
+// ---------- strength of schedule ----------
+$("sosNote").textContent = `Future matchups blend each defense's ${META.season} numbers with its 3-year baseline (the baseline counts as ${SOS.blend_games} games), so early-season noise doesn't dictate week ${Math.max(...SOS.playoff_weeks)}. Faded cells are weeks already played. Fantasy playoffs: weeks ${SOS.playoff_weeks.join(", ")}.`;
+function sosCell(w, pos) {
+  if (!w.opp) return '<span class="cell bye">BYE</span>';
+  const st = (SOS.strength[pos] || {})[w.opp];
+  const m = st ? st.mult : null;
+  let bg = "transparent";
+  if (m != null) {
+    const a = Math.round(Math.min(Math.abs(m - 1) / 0.3, 1) * 55);
+    bg = `color-mix(in srgb, var(${m >= 1 ? "--good" : "--bad"}) ${a}%, transparent)`;
+  }
+  return `<span class="cell${w.played ? " past" : ""}" style="background:${bg}" title="Wk ${w.week}: ${w.home ? "vs" : "@"} ${w.opp}${st ? ` · rank ${st.rank} vs ${pos} · ×${m.toFixed(2)}` : ""}">${w.home ? "" : "@"}${esc(w.opp)}<small>${st ? st.rank : ""}</small></span>`;
+}
+const multFmt = v => v == null ? '<span class="muted">—</span>'
+  : `<span class="${v > 1.02 ? "pos-num" : v < 0.98 ? "neg-num" : ""}">×${v.toFixed(2)}</span>`;
+const weekCols = (getWeeks, getPos) => SOS.weeks.map(wk => ({
+  key: "w" + wk, label: String(wk), cls: "wk", th: SOS.playoff_weeks.includes(wk) ? "wk po" : "wk",
+  title: SOS.playoff_weeks.includes(wk) ? "Fantasy playoff week" : `Week ${wk}`,
+  fmt: (v, r) => { const w = getWeeks(r).find(x => x.week === wk); return w ? sosCell(w, getPos(r)) : ""; },
+}));
+makeTable($("sosRosterTbl"), [
+  {key: "name", label: "Player", l: 1, fmt: (v, r) => `${esc(v)} <span class="muted">${esc(r.team)}</span>`},
+  {key: "group", label: "vs", fmt: (v, r) => posBadge(r.position) + (v !== r.position ? ` <span class="muted">${v}</span>` : "")},
+  {key: "ros", label: "ROS", fmt: multFmt, title: "Average matchup multiplier over remaining weeks"},
+  {key: "playoffs", label: "Playoffs", fmt: multFmt, title: "Average matchup multiplier over fantasy playoff weeks"},
+  {key: "past", label: "Played", fmt: multFmt},
+  ...weekCols(r => r.weeks, r => r.group),
+], () => SOS.roster, {});
+posFilter.sos = "QB";
+const renderSos = makeTable($("sosTbl"), [
+  {key: "team", label: "Offense", l: 1, fmt: v => `${esc(v)} <span class="muted">${esc(teamName(v))}</span>`},
+  {key: "ros_rank", label: "ROS rank", fmt: f(0), title: "1 = easiest remaining schedule at this position"},
+  {key: "ros", label: "ROS", fmt: multFmt},
+  {key: "playoffs", label: "Playoffs", fmt: multFmt},
+  {key: "past", label: "Played", fmt: multFmt},
+  ...weekCols(r => SOS.schedule[r.team] || [], () => posFilter.sos),
+], () => SOS.summary.filter(r => r.position === posFilter.sos), {sortKey: "ros_rank", sortDir: 1});
+onPos("sos", renderSos);
+
 // ---------- tabs ----------
-const TAB_IDS = ["lineup", "plays", "separation", "defense", "slot", "xfp", "redzone", "skill", "rankings"];
+const TAB_IDS = ["lineup", "waivers", "sos", "plays", "separation", "defense", "slot", "xfp", "redzone", "skill", "rankings"];
 const tabsBar = $("tabs");
 function showTab(id, opts = {}) {
   if (!TAB_IDS.includes(id)) id = TAB_IDS[0];
