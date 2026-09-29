@@ -1,4 +1,10 @@
-"""Top-200 tiered rankings: proj_pts = skill_ppg * matchup_mult.
+"""Top-200 tiered rankings.
+
+proj_pts = skill_adj * matchup_mult, where skill_adj is the skill PPG blend
+moved by the other tabs' signals (xFP, Plays/G, separation, CPOE/RYOE; see
+src/signals.py) and matchup_mult comes from Def vs Pos (WR1/WR2 rows, funnel
+confidence) and the slot/perimeter fit. ros_pts and po_pts apply the SOS tab's
+rest-of-season and fantasy-playoff schedule multipliers instead.
 
 Ranks by raw projected points — no positional-scarcity adjustment, so a
 QB-heavy top 12 is expected and is not draft advice.
@@ -9,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 import config
-from src import defense, fetch, scoring
+from src import defense, fetch, scoring, signals
 
 W_CURRENT_PER_GAME = 0.10     # current-season weight grows 10%/game ...
 W_CURRENT_CAP = 0.50          # ... capped at 50% (~5 games)
@@ -69,18 +75,29 @@ def _starting_qbs(df: pd.DataFrame) -> set[str]:
     return set(qbs.drop_duplicates("team")["player_id"])
 
 
-def build_rankings(dvp: pd.DataFrame | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Returns (top-200 rankings, rookie/no-data gaps)."""
-    df, gaps = project_players(dvp)
-    df = df.head(TOP_N).reset_index(drop=True)
-    df["rank"] = df.index + 1
-    df["tier"] = df["rank"].map(lambda r: next(name for cap, name in TIERS if r <= cap))
+def _tier(rank: int) -> str:
+    return next((name for cap, name in TIERS if rank <= cap), "Outside Top 200")
+
+
+def build_rankings(dvp: pd.DataFrame | None = None, tables: dict | None = None,
+                   proj: tuple[pd.DataFrame, pd.DataFrame] | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Returns (rankings, rookie/no-data gaps). `rank`/`tier` are by this week's
+    proj_pts; ros/po ranks are included so the page can re-rank by schedule.
+    Rows are the union of each view's top 200. Pass `proj` to reuse project_players output."""
+    df, gaps = proj if proj is not None else project_players(dvp, tables)
+    df = df.copy()
+    for col, key in (("proj_pts", ""), ("ros_pts", "ros_"), ("po_pts", "po_")):
+        df[key + "rank"] = df[col].rank(ascending=False, method="first").astype(int)
+    keep = (df[["rank", "ros_rank", "po_rank"]] <= TOP_N).any(axis=1)
+    df = df[keep].sort_values("rank").reset_index(drop=True)
+    df["tier"] = df["rank"].map(_tier)
     return df, gaps
 
 
-def project_players(dvp: pd.DataFrame | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Every eligible player (ACT, QBs = starters) with skill_ppg, matchup and proj_pts,
-    sorted by proj_pts. Returns (projections, rookie/no-data gaps)."""
+def project_players(dvp: pd.DataFrame | None = None, tables: dict | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Every eligible player (ACT, QBs = starters) with skill_ppg, signals, matchup,
+    proj_pts (this week), ros_pts and po_pts, sorted by proj_pts.
+    Returns (projections, rookie/no-data gaps)."""
     ros = scoring.roster_lookup(config.SEASON)
     ros = ros[(ros["status"] == "ACT") & ros["position"].isin(scoring.SKILL_POSITIONS)]
 
@@ -109,28 +126,40 @@ def project_players(dvp: pd.DataFrame | None = None) -> tuple[pd.DataFrame, pd.D
     df["volume_ratio"] = vol
     df["w_current"] = w_eff
 
-    # Matchup multiplier, shrunk toward neutral by confidence.
-    dvp = defense.defense_vs_position() if dvp is None else dvp
+    t = tables or signals.tables()
+    if dvp is None:
+        dvp = t["dvp"]
+    t = {**t, "dvp": dvp}
+    df = signals.season_signals(df.reset_index(drop=True), t)
+    df = signals.schedule_signals(df, t)
+
+    # Matchup multiplier, shrunk toward neutral by confidence. WRs face the
+    # opponent's WR1/WR2 row when they hold that role.
     opp = next_opponents()
     df = df.merge(opp[["team", "opp", "bye"]], on="team", how="left")
     df.loc[df["bye"].fillna(False).astype(bool), "opp"] = None
+    df["group"] = signals.matchup_group(df)
     d = dvp[["team", "position", "fp_pg", "league_fp_pg", "confidence", "rank"]].rename(
-        columns={"team": "opp", "rank": "opp_rank", "confidence": "opp_confidence"})
-    df = df.merge(d, on=["opp", "position"], how="left")
+        columns={"team": "opp", "position": "group", "rank": "opp_rank", "confidence": "opp_confidence"})
+    df = df.merge(d, on=["opp", "group"], how="left")
+    df = signals.matchup_signals(df, t)
     raw = df["fp_pg"] / df["league_fp_pg"]
-    mult = (1.0 + (raw - 1.0) * df["opp_confidence"] / 100).clip(0.75, 1.30)
+    mult = ((1.0 + (raw - 1.0) * df["opp_confidence"] / 100) * df["slot_fit"]).clip(0.75, 1.30)
     df["matchup_mult"] = mult.fillna(1.0)   # bye week / unknown opponent -> neutral
-    df["proj_pts"] = df["skill_ppg"] * df["matchup_mult"]
+    df["proj_pts"] = df["skill_adj"] * df["matchup_mult"]
 
     return df.sort_values("proj_pts", ascending=False).reset_index(drop=True), gaps
 
 
 def to_json(df: pd.DataFrame) -> list[dict]:
-    cols = ["rank", "tier", "player_id", "full_name", "position", "team", "opp", "bye", "games",
-            "ppg", "ppg_3yr", "volume_ratio", "w_current", "skill_ppg", "opp_rank",
-            "opp_confidence", "matchup_mult", "proj_pts"]
+    cols = ["rank", "ros_rank", "po_rank", "tier", "player_id", "full_name", "position", "team", "opp", "bye",
+            "group", "games", "ppg", "ppg_3yr", "volume_ratio", "w_current", "skill_ppg", "fpoe_pg",
+            "sig_xfp", "sig_pace", "sig_eff", "sig_total", "skill_adj", "opp_rank", "opp_confidence",
+            "slot_fit", "matchup_mult", "proj_pts", "ros_mult", "ros_pts", "po_mult", "po_pts"]
     out = df[cols].round(2)
-    return out.astype(object).where(out.notna(), None).to_dict("records")
+    out = out.astype(object).where(out.notna(), None)
+    out["chips"] = df["chips"]
+    return out.to_dict("records")
 
 
 def gaps_to_json(gaps: pd.DataFrame) -> list[dict]:

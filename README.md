@@ -60,7 +60,8 @@ src/separation.py          NGS separation + TPRR
 src/expected_points.py     xFP model (calibrate + apply)
 src/redzone.py             red zone opportunity
 src/skill_metrics.py       CPOE / RYOE passthrough
-src/rankings.py            Top-200 tiered rankings
+src/rankings.py            Top-200 tiered rankings (this week / rest of season / playoffs)
+src/signals.py             per-player adjustments the Top 200 takes from every other tab
 src/build_dashboard.py     inject JSON into the HTML template
 templates/dashboard.html   HTML/CSS/JS template with {{TOKEN}} placeholders
 data/                      gitignored cache (all re-downloadable)
@@ -80,7 +81,7 @@ data/                      gitignored cache (all re-downloadable)
 | Expected vs actual FP | xFP calibrated on the last completed season; negative delta = buy-low, positive = regression risk. |
 | Red zone | Targets/carries inside the 20 and 10, TDs, and TD-regression candidates. |
 | CPOE & RYOE | NGS season aggregates. |
-| Top 200 | `proj_pts = skill_ppg × matchup_mult`, tiered 1–200. |
+| Top 200 | Built from every other tab. Skill PPG is moved (±15% max) by xFP luck, Plays/G sustainability, separation change, CPOE (QB) and RYOE (RB); this week multiplies by the Def vs Pos matchup (WR1/WR2 rows, Strong funnels raise confidence) and slot/perimeter fit; Rest of season and Playoffs use SOS instead. Red zone is shown as evidence only (xFP already prices TDs). Each row lists the signals behind it; tapping one opens that tab. |
 
 ### Method notes
 

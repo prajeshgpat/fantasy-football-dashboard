@@ -132,6 +132,8 @@ tr.tier-row td:first-child { background: var(--surface-2); }
 .chip.neu { background: var(--neutral-bg); color: var(--text-2); }
 .chip.warn { background: var(--warn-bg); color: var(--warn); }
 .chip + .chip { margin-left: 4px; }
+button.chip.sig { border: 0; cursor: pointer; font: inherit; font-size: 12px; margin: 1px 0; white-space: nowrap; }
+button.chip.sig:hover { filter: brightness(0.95); text-decoration: underline; }
 .tag { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 4px; border: 1px solid var(--border); color: var(--text-2); margin: 1px 2px 1px 0; }
 .tag.fit { border-color: var(--good); color: var(--good); }
 .ss-pickers { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin: 8px 0; }
@@ -306,9 +308,16 @@ details.note[open] summary { margin-bottom: 4px; }
 
 <section id="rankings" role="tabpanel" hidden>
   <h2>Top 200 Tiered Rankings</h2>
-  <p class="desc">Projected points = skill PPG (3-year baseline blended with this season, damped by volume) × matchup multiplier (opponent FP allowed vs. league, shrunk toward neutral by confidence, clipped 0.75–1.30). Active players only; QBs are team starters only.</p>
-  <div class="note">Ranks by raw projected points. Not adjusted for positional scarcity — a QB-heavy top 12 is expected under standard scoring and is not draft advice.</div>
+  <p class="desc">Every other tab feeds these projections. <b>Skill PPG</b> blends the 3-year baseline with this season (damped by volume). <b>Signals</b> then move it by at most ±15%:
+    <a href="#xfp" data-goto="xfp">xFP</a> (half of this season's points over/under expected is treated as luck),
+    <a href="#plays" data-goto="plays">Plays/G</a> (team's expected plays vs. what the blend assumes),
+    <a href="#separation" data-goto="separation">Separation</a> (WR/TE change vs. last season),
+    <a href="#skill" data-goto="skill">CPOE/RYOE</a> (QB accuracy, RB rushing over expected).
+    <b>This week</b> multiplies by the <a href="#defense" data-goto="defense">Def vs Pos</a> matchup (WRs face the WR1/WR2 row for their role; a Strong funnel raises confidence), nudged ±3% by the <a href="#slot" data-goto="slot">Slot/Perimeter</a> fit, clipped 0.75–1.30.
+    <b>Rest of season</b> and <b>Playoffs</b> use the <a href="#sos" data-goto="sos">SOS</a> schedule instead. <a href="#redzone" data-goto="redzone">Red zone</a> work is shown as evidence only, since xFP already prices touchdowns by field position.</p>
+  <div class="note">Ranks by raw projected points. Not adjusted for positional scarcity — a QB-heavy top 12 is expected and is not draft advice. Tap a signal chip to open the tab it comes from.</div>
   <div class="controls">
+    <span class="seg" id="rankMode"><button data-v="week" class="on">This week</button><button data-v="ros">Rest of season</button><button data-v="po">Playoffs</button></span>
     <span class="seg" data-posfilter="rank" data-positions="All,QB,RB,WR,TE"></span>
     <input type="search" id="rankSearch" placeholder="Search player or team">
   </div>
@@ -855,26 +864,72 @@ makeTable($("ryoeTbl"), [
 ], () => RYOE, {sortKey: "ryoe_per_att"});
 
 // ---------- 5.9 rankings ----------
-const renderRank = makeTable($("rankTbl"), [
-  {key: "rank", label: "#"},
-  {key: "full_name", label: "Player", l: 1},
-  {key: "position", label: "Pos", fmt: posBadge},
-  {key: "team", label: "Team"},
-  {key: "opp", label: "Opp", fmt: (v, r) => r.bye ? '<span class="chip neu">BYE</span>' : esc(v || "—")},
-  {key: "opp_rank", label: "Opp rank", fmt: rankCell},
-  {key: "games", label: "G", fmt: f(0)},
-  {key: "ppg", label: `PPG ${META.season}`, fmt: f(1)},
-  {key: "ppg_3yr", label: "PPG 3-yr", fmt: f(1)},
-  {key: "volume_ratio", label: "Vol ratio", fmt: f(2), title: "Current opportunity/G ÷ 3-yr opportunity/G, capped at 1"},
-  {key: "skill_ppg", label: "Skill PPG", fmt: f(1)},
-  {key: "matchup_mult", label: "Matchup ×", fmt: f(2)},
-  {key: "proj_pts", label: "Proj", fmt: v => `<b>${v.toFixed(1)}</b>`},
-], () => {
+const TIERS = [[12, "Elite"], [24, "Locks"], [40, "Strong Starters"], [60, "Solid Starters"], [80, "Flex"],
+               [100, "Streamers"], [130, "Bench Stash"], [160, "Deep Bench"], [200, "Waiver Watch"]];
+const tierOf = r => (TIERS.find(([cap]) => r <= cap) || [0, "Outside Top 200"])[1];
+const RANK_MODES = {
+  week: {rank: "rank", pts: "proj_pts", mult: "matchup_mult", label: "Week", multLabel: "Matchup ×",
+         multTitle: "This week's Def vs Pos multiplier (confidence-shrunk, funnel-boosted, slot/perimeter fit), clipped 0.75–1.30"},
+  ros:  {rank: "ros_rank", pts: "ros_pts", mult: "ros_mult", label: "ROS", multLabel: "ROS SOS ×",
+         multTitle: "Average opponent multiplier over the remaining schedule (SOS tab)"},
+  po:   {rank: "po_rank", pts: "po_pts", mult: "po_mult", label: "Playoffs", multLabel: "Playoff SOS ×",
+         multTitle: `Average opponent multiplier in fantasy playoff weeks ${(SOS.playoff_weeks || []).join(", ")} (SOS tab)`},
+};
+let rankMode = "week";
+const sgn = v => v == null ? "—" : `<span class="${v > 0.05 ? "pos-num" : v < -0.05 ? "neg-num" : "muted"}">${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(1)}</span>`;
+const chipsCell = (v, r) => (r.chips || []).filter(c => rankMode === "week" || !c.week).map(c =>
+  `<button type="button" class="chip ${c.tone} sig" data-goto="${c.tab}" title="Open the ${esc(c.tab)} tab">${esc(c.t)}</button>`).join("");
+const sigTitle = r => `xFP ${(r.sig_xfp ?? 0).toFixed(2)} · Plays ${(r.sig_pace ?? 0).toFixed(2)} · Efficiency ${(r.sig_eff ?? 0).toFixed(2)} (points, capped at ±15% of skill PPG)`;
+let rankCols;
+function rankColumns() {
+  const m = RANK_MODES[rankMode];
+  const cols = [
+    {key: "_rank", label: "#"},
+    {key: "full_name", label: "Player", l: 1},
+    {key: "position", label: "Pos", fmt: posBadge},
+    {key: "team", label: "Team"},
+  ];
+  if (rankMode === "week") cols.push(
+    {key: "opp", label: "Opp", fmt: (v, r) => r.bye ? '<span class="chip neu">BYE</span>' : esc(v || "—") + (r.group && r.group !== r.position ? ` <span class="muted">${esc(r.group)}</span>` : "")},
+    {key: "opp_rank", label: "Opp rank", fmt: rankCell});
+  cols.push(
+    {key: "games", label: "G", fmt: f(0)},
+    {key: "ppg", label: `PPG ${META.season}`, fmt: f(1)},
+    {key: "ppg_3yr", label: "PPG 3-yr", fmt: f(1)},
+    {key: "skill_ppg", label: "Skill PPG", fmt: f(1), title: "3-yr baseline blended with this season, damped by volume ratio"},
+    {key: "sig_total", label: "Signals", fmt: (v, r) => `<span title="${esc(sigTitle(r))}">${sgn(v)}</span>`,
+     title: "Points added/removed by xFP, Plays/G and efficiency signals"},
+    {key: "skill_adj", label: "Adj PPG", fmt: f(1)},
+    {key: m.mult, label: m.multLabel, fmt: f(2), title: m.multTitle},
+    {key: m.pts, label: m.label, fmt: v => v == null ? "—" : `<b>${v.toFixed(1)}</b>`},
+    {key: "_why", label: "Why", l: 1, fmt: chipsCell},
+  );
+  return cols;
+}
+function rankRows() {
+  const m = RANK_MODES[rankMode];
   const q = $("rankSearch").value.trim().toLowerCase();
-  return byPos("rank", RANKS).filter(r => !q || r.full_name.toLowerCase().includes(q) || (r.team || "").toLowerCase() === q);
-}, {sortKey: "rank", sortDir: 1, groupBy: "tier"});
-onPos("rank", renderRank);
-$("rankSearch").oninput = renderRank;
+  return byPos("rank", RANKS)
+    .filter(r => r[m.rank] <= 200)
+    .map(r => Object.assign(r, {_rank: r[m.rank], tier: tierOf(r[m.rank])}))
+    .filter(r => !q || r.full_name.toLowerCase().includes(q) || (r.team || "").toLowerCase() === q);
+}
+let renderRank;
+function buildRankTable() {
+  renderRank = makeTable($("rankTbl"), rankColumns(), rankRows, {sortKey: "_rank", sortDir: 1, groupBy: "tier"});
+}
+buildRankTable();
+$("rankMode").onclick = e => {
+  const b = e.target.closest("button"); if (!b) return;
+  $("rankMode").querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b));
+  rankMode = b.dataset.v; buildRankTable();
+};
+document.addEventListener("click", e => {
+  const a = e.target.closest("[data-goto]"); if (!a) return;
+  e.preventDefault(); showTab(a.dataset.goto, {scroll: true});
+});
+onPos("rank", () => renderRank());
+$("rankSearch").oninput = () => renderRank();
 $("gapsNote").innerHTML = GAPS.length
   ? `<b>Data gaps (${GAPS.length}):</b> active players with no play-by-play in this or the prior three seasons, so they can't be projected yet — ` +
     GAPS.map(g => `${esc(g.full_name)} (${g.position}, ${g.team})`).join(", ")

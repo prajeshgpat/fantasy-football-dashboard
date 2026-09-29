@@ -16,7 +16,7 @@ from pathlib import Path
 import pandas as pd
 
 import config
-from src import (defense, expected_points, fetch, pace, rankings, redzone, schedule, scoring,
+from src import (defense, expected_points, fetch, pace, rankings, redzone, schedule, scoring, signals,
                  separation, skill_metrics, slot_perimeter)
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -168,16 +168,11 @@ def compute() -> dict[str, object]:
     def step(label):
         print(f"  {label}", file=sys.stderr)
 
-    step("defense vs position"); dvp = defense.defense_vs_position()
-    step("slot vs perimeter"); slot = slot_perimeter.slot_vs_perimeter()
-    step("rankings"); ranks, gaps = rankings.build_rankings(dvp)
-    step("separation"); sep = separation.separation_table()
-    step("expected points"); xfp = expected_points.expected_vs_actual()
-    step("red zone"); rz = redzone.red_zone()
-    step("skill metrics"); cp, ry = skill_metrics.cpoe(), skill_metrics.ryoe()
-    step("team volume"); volume = pace.volume_table()
-    step("receiver tags"); tags = slot_perimeter.receiver_tags()
-    step("projections"); proj_all, _ = rankings.project_players(dvp)
+    step("tab tables"); t = signals.tables()
+    dvp, slot, sep, xfp, rz = t["dvp"], t["slot"], t["sep"], t["xfp"], t["rz"]
+    cp, ry, volume, tags = t["cpoe"], t["ryoe"], t["volume"], t["tags"]
+    step("projections"); proj_all, gaps = rankings.project_players(dvp, t)
+    ranks, _ = rankings.build_rankings(proj=(proj_all, gaps))
     step("lineup + start/sit"); mrows = MatchupRows(dvp, slot, ranks, tags, proj_all)
     lineup = my_lineup(mrows)
     start_sit = start_sit_pool(mrows, proj_all)
