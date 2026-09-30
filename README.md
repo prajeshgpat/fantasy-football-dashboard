@@ -61,6 +61,7 @@ src/expected_points.py     xFP model (calibrate + apply)
 src/redzone.py             red zone opportunity
 src/skill_metrics.py       CPOE / RYOE passthrough
 src/rankings.py            Top-200 tiered rankings (this week / rest of season / playoffs)
+src/rb_efficiency.py       RB yards per carry vs. PPG
 src/signals.py             per-player adjustments the Top 200 takes from every other tab
 src/build_dashboard.py     inject JSON into the HTML template
 templates/dashboard.html   HTML/CSS/JS template with {{TOKEN}} placeholders
@@ -81,7 +82,8 @@ data/                      gitignored cache (all re-downloadable)
 | Expected vs actual FP | xFP calibrated on the last completed season; negative delta = buy-low, positive = regression risk. |
 | Red zone | Targets/carries inside the 20 and 10, TDs, and TD-regression candidates. |
 | CPOE & RYOE | NGS season aggregates. |
-| Top 200 | Built from every other tab. Skill PPG is moved (±15% max) by xFP luck, Plays/G sustainability, separation change, CPOE (QB) and RYOE (RB); this week multiplies by the Def vs Pos matchup (WR1/WR2 rows, Strong funnels raise confidence) and slot/perimeter fit; Rest of season and Playoffs use SOS instead. Red zone is shown as evidence only (xFP already prices TDs). Each row lists the signals behind it; tapping one opens that tab. |
+| RB YPC | Yards per carry (x) vs. PPR points per game (y) for every back with 10+ carries and 5+ per game, this season or last; median lines split it into quadrants, point size = carries/G, your backs highlighted. |
+| Top 200 | Built from every other tab. Skill PPG weights this season 70%, last season 20%, two seasons back 10% (`RANKING_WEIGHTS`), and each season's PPG is 50% actual / 50% expected points (`XFP_PPG_WEIGHT`). It is then moved (±15% max) by Plays/G sustainability, separation change, CPOE (QB) and RYOE (RB); this week multiplies by the Def vs Pos matchup (WR1/WR2 rows, Strong funnels raise confidence) and slot/perimeter fit; Rest of season and Playoffs use SOS instead. Red zone is shown as evidence only (xFP already prices TDs). Each row lists the signals behind it; tapping one opens that tab. |
 
 ### Method notes
 

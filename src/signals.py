@@ -3,8 +3,6 @@
 Each signal is small and bounded, and is recorded as the points it moves a
 player's skill PPG so the table can show where a projection came from:
 
-  xFP        current-season points over/under expected regress halfway, in
-             proportion to how much this season drives the blend (w_current)
   Plays/G    the team's expected plays/G (the Plays/G verdict) vs. the plays
              the blend implicitly assumes (this season and last, weighted)
   Separation WR/TE separation change vs. last season (target-earning skill)
@@ -18,8 +16,9 @@ Matchup-level signals (this week only) adjust the matchup multiplier:
   Slot/Perim a Slot or Perimeter receiver facing a defense vulnerable (or not)
              in that area
 
-Red zone work is shown as evidence only: xFP already prices touchdowns by
-field position, so adding it again would double count.
+xFP is part of skill PPG itself (see rankings.season_ppg), so it only adds
+an evidence chip here. Red zone work is evidence only too: xFP already prices
+touchdowns by field position, so adding it again would double count.
 """
 from __future__ import annotations
 
@@ -31,7 +30,6 @@ import pandas as pd
 import config
 from src import defense, expected_points, pace, redzone, schedule, separation, skill_metrics, slot_perimeter
 
-XFP_REGRESS = 0.5          # share of (actual - expected) FP/G treated as luck
 PACE_CLIP = (0.93, 1.07)
 SEP_PER_YARD = 0.02        # +2% per yard of separation gained vs. last season ...
 SEP_CLIP = 0.03            # ... capped at ±3%
@@ -74,20 +72,19 @@ def _chip(text: str, tone: str, tab: str, week: bool = False) -> dict:
 
 
 def season_signals(df: pd.DataFrame, t: dict[str, pd.DataFrame]) -> pd.DataFrame:
-    """Adds sig_xfp, sig_pace, sig_eff (points), skill_adj and a `chips` list."""
+    """Adds fpoe_pg, sig_pace, sig_eff (points), skill_adj and a `chips` list."""
     df = df.copy()
     w = df["w_current"].fillna(0)
     base = df["skill_ppg"]
     chips = [[] for _ in range(len(df))]
     idx = {pid: i for i, pid in enumerate(df["player_id"])}
 
-    # xFP luck: only the current-season share of the blend regresses.
+    # xFP is already blended into skill PPG; the chip shows how far this season ran from it.
     x = df[["player_id"]].merge(t["xfp"][["player_id", "xfp_pg", "actual_pg"]], on="player_id", how="left")
     luck = (x["actual_pg"] - x["xfp_pg"]).to_numpy()
     df["fpoe_pg"] = luck
-    df["sig_xfp"] = np.nan_to_num(-XFP_REGRESS * w.to_numpy() * luck)
-    for i, (l, s) in enumerate(zip(luck, df["sig_xfp"])):
-        if not np.isnan(l) and abs(s) >= 0.3:
+    for i, l in enumerate(luck):
+        if not np.isnan(l) and abs(l) >= 1.0:
             chips[i].append(_chip(f"{'Above' if l > 0 else 'Below'} xFP {abs(l):.1f}/G", "bad" if l > 0 else "good", "xfp"))
 
     # Team plays: expected ROS plays vs. what the blend assumes.
@@ -127,7 +124,7 @@ def season_signals(df: pd.DataFrame, t: dict[str, pd.DataFrame]) -> pd.DataFrame
                 chips[i].append(_chip(f"RYOE {'+' if r > 0 else '−'}{abs(r):.1f}/att", "good" if r > 0 else "bad", "skill"))
     df["sig_eff"] = base * eff
 
-    total = df[["sig_xfp", "sig_pace", "sig_eff"]].sum(axis=1)
+    total = df[["sig_pace", "sig_eff"]].sum(axis=1)
     cap = base.abs() * SEASON_CLIP
     df["sig_total"] = total.clip(-cap, cap)
     df["skill_adj"] = base + df["sig_total"]

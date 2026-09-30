@@ -43,7 +43,7 @@ for team, names in TEAMS.items():
         r = m.iloc[0]
         owner[r["k"]] = team
         rows.append(dict(team_owner=team, name=r["full_name"], pos=r["position"], nfl=r["team"], games=int(r["games"]),
-                         ppg=r["ppg"], ppg3=r["ppg_3yr"], skill=r["skill_ppg"], vol=r["volume_ratio"],
+                         ppg=r["ppg"], ppg25=r["ppg_2025"], skill=r["skill_ppg"], xppg=r["xppg"],
                          ros=r["ros_mult"], po=r["po_mult"], ros_ppg=r["ros_ppg"], rk=r["rank_ov"]))
 df = pd.DataFrame(rows)
 print("MISSING:", df[df.get("missing") == True]["name"].tolist() if "missing" in df else [])
@@ -73,10 +73,10 @@ print()
 for pos in ["QB", "RB", "WR", "TE"]:
     print(pos, "league starter avg skill:", round(df[df.pos == pos].groupby("team_owner").skill.apply(lambda s: s.nlargest({"QB":1,"RB":2,"WR":2,"TE":1}[pos]).mean()).mean(), 1))
 print()
-cols = ["team_owner","name","pos","nfl","games","ppg","ppg3","skill","vol","ros","po","ros_ppg","rk"]
+cols = ["team_owner","name","pos","nfl","games","ppg","xppg","ppg25","skill","ros","po","ros_ppg","rk"]
 print(df.sort_values(["team_owner","skill"], ascending=[True, False])[cols].round(2).to_string(index=False))
 print()
 # free agents / top unowned
 own = set(owner)
-fa = proj[~proj["k"].isin(own)].head(20)[["full_name","position","team","games","skill_ppg","volume_ratio","matchup_mult","ros_mult"]]
+fa = proj[~proj["k"].isin(own)].head(20)[["full_name","position","team","games","skill_ppg","xppg","matchup_mult","ros_mult"]]
 print("TOP UNOWNED\n", fa.round(2).to_string(index=False))

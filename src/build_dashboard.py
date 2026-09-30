@@ -16,7 +16,7 @@ from pathlib import Path
 import pandas as pd
 
 import config
-from src import (defense, expected_points, fetch, pace, rankings, redzone, schedule, scoring, signals,
+from src import (defense, expected_points, fetch, pace, rankings, rb_efficiency, redzone, schedule, scoring, signals,
                  separation, skill_metrics, slot_perimeter)
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -185,6 +185,8 @@ def compute() -> dict[str, object]:
         "season": config.SEASON,
         "prior_season": config.PRIOR_SEASON,
         "history_seasons": config.HISTORY_SEASONS,
+        "ranking_weights": config.RANKING_WEIGHTS,
+        "xfp_ppg_weight": config.XFP_PPG_WEIGHT,
         "through_week": int(pbp["week"].max()) if len(pbp) else 0,
         "next_week": int(opp["week"].min()) if len(opp) else None,
         "generated": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
@@ -214,6 +216,7 @@ def compute() -> dict[str, object]:
         "REDZONE_DATA": redzone.to_json(rz),
         "CPOE_DATA": skill_metrics.to_json(cp),
         "RYOE_DATA": skill_metrics.to_json(ry),
+        "RB_EFF_DATA": rb_efficiency.to_json(),
         "RANKINGS_DATA": rankings.to_json(ranks),
         "GAPS_DATA": rankings.gaps_to_json(gaps),
     }

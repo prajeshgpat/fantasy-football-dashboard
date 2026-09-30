@@ -1,7 +1,12 @@
 """Top-200 tiered rankings.
 
-proj_pts = skill_adj * matchup_mult, where skill_adj is the skill PPG blend
-moved by the other tabs' signals (xFP, Plays/G, separation, CPOE/RYOE; see
+Skill PPG = config.RANKING_WEIGHTS over this season and the two before it
+(70/20/10, renormalized over seasons played), where each season's PPG mixes
+actual and expected fantasy points (config.XFP_PPG_WEIGHT; xFP covers
+rushing and receiving, so QB passing points stay actual).
+
+proj_pts = skill_adj * matchup_mult, where skill_adj is skill PPG moved by
+the other tabs' signals (Plays/G, separation, CPOE/RYOE; see
 src/signals.py) and matchup_mult comes from Def vs Pos (WR1/WR2 rows, funnel
 confidence) and the slot/perimeter fit. ros_pts and po_pts apply the SOS tab's
 rest-of-season and fantasy-playoff schedule multipliers instead.
@@ -15,10 +20,8 @@ import numpy as np
 import pandas as pd
 
 import config
-from src import defense, fetch, scoring, signals
+from src import defense, expected_points, fetch, scoring, signals
 
-W_CURRENT_PER_GAME = 0.10     # current-season weight grows 10%/game ...
-W_CURRENT_CAP = 0.50          # ... capped at 50% (~5 games)
 INJURED_DISCOUNT = 0.92       # zero-game ACT players with history
 TOP_N = 200
 TIERS = [(12, "Elite"), (24, "Locks"), (40, "Strong Starters"), (60, "Solid Starters"),
@@ -49,29 +52,41 @@ def next_opponents(year: int = config.SEASON) -> pd.DataFrame:
     return long.reset_index(drop=True)
 
 
-def _history() -> pd.DataFrame:
-    rows = []
-    for yr, w in zip(config.HISTORY_SEASONS, config.HISTORY_WEIGHTS):
-        s = scoring.player_seasons(yr)
-        s["opp"] = scoring.opportunity(s)
-        rows.append(s.assign(w=w)[["player_id", "games", "fp", "opp", "w"]])
-    h = pd.concat(rows)
-    h = h[h["games"] > 0]
-    h["ppg"] = h["fp"] / h["games"]
-    h["opp_pg"] = h["opp"] / h["games"]
-    agg = h.groupby("player_id").apply(lambda d: pd.Series({
-        "ppg_3yr": np.average(d["ppg"], weights=d["w"]),
-        "opp_3yr_pg": np.average(d["opp_pg"], weights=d["w"]),
-        "games_3yr": d["games"].sum(),
-    }), include_groups=False)
-    return agg.reset_index()
+def season_ppg(year: int) -> pd.DataFrame:
+    """player_id -> games, actual ppg, expected ppg (xppg) and the scored ppg the
+    blend uses. xppg swaps rushing/receiving points for their xFP value; players
+    below the xFP opportunity minimum (and QB passing) keep actual points."""
+    s = scoring.player_seasons(year)
+    x = expected_points.expected_vs_actual(year)[["player_id", "xfp", "actual"]]
+    s = s.merge(x, on="player_id", how="left")
+    s["xppg"] = (s["fp"] - s["actual"] + s["xfp"]) / s["games"]
+    s["score_ppg"] = np.where(s["xppg"].notna(),
+                              (1 - config.XFP_PPG_WEIGHT) * s["ppg"] + config.XFP_PPG_WEIGHT * s["xppg"], s["ppg"])
+    return s[s["games"] > 0][["player_id", "games", "ppg", "xppg", "score_ppg"]]
+
+
+def _weighted(df: pd.DataFrame) -> pd.DataFrame:
+    """Adds skill_ppg and w_current from the per-season score_ppg_<year> columns."""
+    num = pd.Series(0.0, index=df.index)
+    den = pd.Series(0.0, index=df.index)
+    for yr, w in config.RANKING_WEIGHTS.items():
+        has = df[f"games_{yr}"] > 0
+        num += np.where(has, w * df[f"score_ppg_{yr}"].fillna(0), 0)
+        den += np.where(has, w, 0)
+    df["skill_ppg"] = num / den.where(den > 0)
+    cur = df[f"games_{config.SEASON}"] > 0
+    df["w_current"] = np.where(cur, config.RANKING_WEIGHTS[config.SEASON] / den.where(den > 0), 0.0)
+    # Active but hasn't played this season (injury, suspension): small discount.
+    df.loc[~cur, "skill_ppg"] *= INJURED_DISCOUNT
+    return df
 
 
 def _starting_qbs(df: pd.DataFrame) -> set[str]:
     """Per roster team, the ACT QB with the most current-season pass attempts
-    (prior 3-year PPG breaks ties, e.g. preseason)."""
+    (last season's games/PPG break ties, e.g. preseason)."""
     qbs = df[df["position"] == "QB"].copy()
-    qbs = qbs.sort_values(["pass_att", "games_3yr", "ppg_3yr"], ascending=False)
+    prev = config.SEASON - 1
+    qbs = qbs.sort_values(["pass_att", f"games_{prev}", f"ppg_{prev}"], ascending=False)
     return set(qbs.drop_duplicates("team")["player_id"])
 
 
@@ -101,30 +116,22 @@ def project_players(dvp: pd.DataFrame | None = None, tables: dict | None = None)
     ros = scoring.roster_lookup(config.SEASON)
     ros = ros[(ros["status"] == "ACT") & ros["position"].isin(scoring.SKILL_POSITIONS)]
 
-    cur = scoring.player_seasons(config.SEASON)
-    cur["opp_cur"] = scoring.opportunity(cur)
-    cur = cur[["player_id", "games", "fp", "ppg", "opp_cur", "pass_att"]]
-    df = ros.merge(cur, on="player_id", how="left").merge(_history(), on="player_id", how="left")
-    df[["games", "fp", "opp_cur", "pass_att", "games_3yr"]] = \
-        df[["games", "fp", "opp_cur", "pass_att", "games_3yr"]].fillna(0)
+    cur = scoring.player_seasons(config.SEASON)[["player_id", "pass_att"]]
+    df = ros.merge(cur, on="player_id", how="left")
+    for yr in config.RANKING_WEIGHTS:
+        sp = season_ppg(yr).rename(columns=lambda c: c if c == "player_id" else f"{c}_{yr}")
+        df = df.merge(sp, on="player_id", how="left")
+        df[f"games_{yr}"] = df[f"games_{yr}"].fillna(0)
+    df["pass_att"] = df["pass_att"].fillna(0)
+    y = config.SEASON
+    df["games"], df["ppg"], df["xppg"] = df[f"games_{y}"], df[f"ppg_{y}"], df[f"xppg_{y}"]
 
-    gaps = df[(df["games"] == 0) & df["ppg_3yr"].isna()]
-    df = df.drop(gaps.index)
+    played = sum(df[f"games_{yr}"] for yr in config.RANKING_WEIGHTS) > 0
+    gaps = df[~played]
+    df = df[played]
 
-    df = df[(df["position"] != "QB") | df["player_id"].isin(_starting_qbs(df))]
-
-    w_cur = np.minimum(df["games"] * W_CURRENT_PER_GAME, W_CURRENT_CAP)
-    opp_cur_pg = np.where(df["games"] > 0, df["opp_cur"] / df["games"].where(df["games"] > 0), 0)
-    vol = np.where(df["opp_3yr_pg"] > 0, np.minimum(opp_cur_pg / df["opp_3yr_pg"], 1.0), 1.0)
-    w_eff = w_cur * (0.5 + 0.5 * vol)
-    blended = df["ppg_3yr"] * (1 - w_eff) + df["ppg"].fillna(0) * w_eff
-    df["skill_ppg"] = np.select(
-        [df["ppg_3yr"].isna(), df["games"] == 0],
-        [df["ppg"], df["ppg_3yr"] * INJURED_DISCOUNT],
-        default=blended,
-    )
-    df["volume_ratio"] = vol
-    df["w_current"] = w_eff
+    df = df[(df["position"] != "QB") | df["player_id"].isin(_starting_qbs(df))].copy()
+    df = _weighted(df)
 
     t = tables or signals.tables()
     if dvp is None:
@@ -153,8 +160,8 @@ def project_players(dvp: pd.DataFrame | None = None, tables: dict | None = None)
 
 def to_json(df: pd.DataFrame) -> list[dict]:
     cols = ["rank", "ros_rank", "po_rank", "tier", "player_id", "full_name", "position", "team", "opp", "bye",
-            "group", "games", "ppg", "ppg_3yr", "volume_ratio", "w_current", "skill_ppg", "fpoe_pg",
-            "sig_xfp", "sig_pace", "sig_eff", "sig_total", "skill_adj", "opp_rank", "opp_confidence",
+            "group", "games", "ppg", "xppg", f"ppg_{config.SEASON - 1}", f"ppg_{config.SEASON - 2}",
+            "w_current", "skill_ppg", "fpoe_pg", "sig_pace", "sig_eff", "sig_total", "skill_adj", "opp_rank", "opp_confidence",
             "slot_fit", "matchup_mult", "proj_pts", "ros_mult", "ros_pts", "po_mult", "po_pts"]
     out = df[cols].round(2)
     out = out.astype(object).where(out.notna(), None)

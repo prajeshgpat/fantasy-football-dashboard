@@ -4,7 +4,14 @@ league lives here so the rest of the code stays reusable."""
 SEASON = 2026                 # current (possibly in-progress) season
 PRIOR_SEASON = SEASON - 1     # most recent completed season (xFP calibration, true TPRR)
 HISTORY_SEASONS = [SEASON - 1, SEASON - 2, SEASON - 3]
-HISTORY_WEIGHTS = [0.50, 0.30, 0.20]   # recency weights for 3-year baselines
+HISTORY_WEIGHTS = [0.50, 0.30, 0.20]   # recency weights for 3-year baselines (defense)
+
+# Player skill PPG for the Top 200 / projections: season weights (renormalized
+# over the seasons a player actually played) ...
+RANKING_WEIGHTS = {SEASON: 0.70, SEASON - 1: 0.20, SEASON - 2: 0.10}
+# ... and each season's PPG mixes actual points with expected points (xFP):
+# rushing/receiving points are replaced by their xFP value at this share.
+XFP_PPG_WEIGHT = 0.50
 
 LEAGUE_SIZE = 8
 SCORING = "PPR"               # 1.0 per reception

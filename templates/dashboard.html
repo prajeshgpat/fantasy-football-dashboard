@@ -196,6 +196,7 @@ details.note[open] summary { margin-bottom: 4px; }
       <button data-tab="xfp" role="tab">xFP</button>
       <button data-tab="redzone" role="tab">Red Zone</button>
       <button data-tab="skill" role="tab">CPOE/RYOE</button>
+      <button data-tab="rbeff" role="tab">RB YPC</button>
       <button data-tab="rankings" role="tab">Top 200</button>
     </div>
   </div>
@@ -306,10 +307,22 @@ details.note[open] summary { margin-bottom: 4px; }
   </div>
 </section>
 
+<section id="rbeff" role="tabpanel" hidden>
+  <h2>RB Yards per Carry vs. Fantasy PPG</h2>
+  <p class="desc">Each running back's yards per carry (x) against PPR points per game (y), including receiving. Dashed lines mark the median of the backs shown, splitting the chart into four groups: efficient and productive (top right), productive on volume or catches despite a low YPC (top left), efficient without the workload yet (bottom right) and neither (bottom left). Point size = carries per game. <span id="rbMin"></span></p>
+  <div class="controls">
+    <span class="seg" id="rbSeason"></span>
+    <label><input type="checkbox" id="rbMineOnly"> My roster only</label>
+    <button data-reset="rbChart">Reset zoom</button>
+  </div>
+  <div class="legend"><span class="tri" style="--c:var(--pos-rb)">RB</span><span class="dot" style="--c:var(--accent)">My roster</span></div>
+  <div class="chart-wrap"><canvas id="rbChart" aria-label="Scatter of yards per carry vs fantasy points per game for running backs"></canvas></div>
+  <div class="tbl-wrap"><table id="rbTbl"></table></div>
+</section>
+
 <section id="rankings" role="tabpanel" hidden>
   <h2>Top 200 Tiered Rankings</h2>
-  <p class="desc">Every other tab feeds these projections. <b>Skill PPG</b> blends the 3-year baseline with this season (damped by volume). <b>Signals</b> then move it by at most ±15%:
-    <a href="#xfp" data-goto="xfp">xFP</a> (half of this season's points over/under expected is treated as luck),
+  <p class="desc">Every other tab feeds these projections. <b>Skill PPG</b> weights this season 70%, last season 20% and two seasons back 10% (renormalized when a player missed a season). Each season's PPG is half actual points and half <a href="#xfp" data-goto="xfp">expected points (xFP)</a>, so touchdown luck and big-play variance count for less. <b>Signals</b> then move it by at most ±15%:
     <a href="#plays" data-goto="plays">Plays/G</a> (team's expected plays vs. what the blend assumes),
     <a href="#separation" data-goto="separation">Separation</a> (WR/TE change vs. last season),
     <a href="#skill" data-goto="skill">CPOE/RYOE</a> (QB accuracy, RB rushing over expected).
@@ -343,6 +356,7 @@ const XFP = {{XFP_DATA}};
 const RZ = {{REDZONE_DATA}};
 const CPOE = {{CPOE_DATA}};
 const RYOE = {{RYOE_DATA}};
+const RB_EFF = {{RB_EFF_DATA}};
 const RANKS = {{RANKINGS_DATA}};
 const GAPS = {{GAPS_DATA}};
 </script>
@@ -517,6 +531,30 @@ const diagPlugin = {
   },
 };
 
+// Dashed vertical/horizontal reference lines: cfg.ref = {x, y, xLabel, yLabel}
+const refPlugin = {
+  id: "refLines",
+  beforeDatasetsDraw(chart, _, opts) {
+    if (!opts || (opts.x == null && opts.y == null)) return;
+    const {ctx, chartArea: a, scales: {x, y}} = chart;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(a.left, a.top, a.width, a.height); ctx.clip();
+    ctx.strokeStyle = css("--text-3"); ctx.fillStyle = css("--text-3"); ctx.setLineDash([5, 4]); ctx.lineWidth = 1;
+    ctx.font = "11px " + Chart.defaults.font.family;
+    if (opts.x != null) {
+      const px = x.getPixelForValue(opts.x);
+      ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke();
+      if (opts.xLabel) { ctx.textBaseline = "top"; ctx.fillText(opts.xLabel, px + 4, a.top + 2); }
+    }
+    if (opts.y != null) {
+      const py = y.getPixelForValue(opts.y);
+      ctx.beginPath(); ctx.moveTo(a.left, py); ctx.lineTo(a.right, py); ctx.stroke();
+      if (opts.yLabel) { ctx.textBaseline = "bottom"; ctx.fillText(opts.yLabel, a.left + 4, py - 2); }
+    }
+    ctx.restore();
+  },
+};
+
 const charts = {};
 const chartBuilders = {};
 
@@ -540,13 +578,14 @@ function drawChart(id) {
   charts[id] = new Chart($(id), {
     type: "scatter",
     data: cfg.data,
-    plugins: [labelPlugin, diagPlugin],
+    plugins: [labelPlugin, diagPlugin, refPlugin],
     options: {
       maintainAspectRatio: false, animation: false,
       scales: {x: axis(cfg.x), y: axis(cfg.y)},
       plugins: {
         legend: {display: false},
         diag: {on: !!cfg.diag},
+        refLines: cfg.ref || {},
         tooltip: {callbacks: {label: c => cfg.tip(c.raw)}},
         // Calmer zoom: the wheel needs Ctrl (a trackpad pinch sends Ctrl+wheel) and zooms in
         // small steps, so scrolling the page never zooms a chart. Dragging always pans.
@@ -863,6 +902,53 @@ makeTable($("ryoeTbl"), [
   {key: "stacked_box_pct", label: "8+ box %", fmt: f(0)},
 ], () => RYOE, {sortKey: "ryoe_per_att"});
 
+// ---------- RB yards per carry vs PPG ----------
+const MY_IDS = new Set(MY_ROSTER_IDS);
+let rbSeason = RB_EFF.seasons[0];
+$("rbSeason").innerHTML = RB_EFF.seasons.map((y, i) => `<button data-v="${y}" class="${i ? "" : "on"}">${y}</button>`).join("");
+$("rbMin").textContent = `Backs with at least ${RB_EFF.min_carries} carries and ${RB_EFF.min_carries_pg} per game.`;
+const median = a => { const s = a.slice().sort((x, y) => x - y), m = s.length >> 1; return s.length ? (s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2) : null; };
+const rbRows = () => (RB_EFF.rows[rbSeason] || []).filter(r => !$("rbMineOnly").checked || MY_IDS.has(r.player_id));
+scatter("rbChart", () => {
+  const all = RB_EFF.rows[rbSeason] || [];
+  const mx = median(all.map(r => r.ypc)), my = median(all.map(r => r.ppg));
+  const pts = rbRows().map(r => ({x: r.ypc, y: r.ppg, name: r.full_name, short: r.full_name.split(" ").filter(w => !/^(Jr\.?|Sr\.?|II|III|IV|V)$/.test(w)).slice(-1)[0],
+    team: r.team, cpg: r.carries_pg, g: r.games, mine: MY_IDS.has(r.player_id)}));
+  markExtremes(pts.filter(p => !p.mine), p => p.y, 8);
+  pts.filter(p => p.mine).forEach(p => p.label = true);
+  const radius = p => 3 + Math.min(p.cpg, 25) / 3;
+  const others = pts.filter(p => !p.mine), mine = pts.filter(p => p.mine);
+  return {
+    x: "Yards per carry", y: `PPR points per game (${rbSeason})`,
+    ref: {x: mx, y: my, xLabel: mx != null ? `median ${mx.toFixed(2)} YPC` : "", yLabel: my != null ? `median ${my.toFixed(1)} PPG` : ""},
+    data: {datasets: [
+      {label: "RB", data: others, backgroundColor: posColor("RB"), pointStyle: "triangle", pointRadius: others.map(radius)},
+      {label: "My roster", data: mine, backgroundColor: css("--accent"), pointStyle: "circle", pointRadius: mine.map(p => radius(p) + 1)},
+    ]},
+    tip: d => `${d.name} (${d.team}) · ${d.x.toFixed(2)} YPC · ${d.y.toFixed(1)} PPG · ${d.cpg.toFixed(1)} car/G · ${d.g} G`,
+  };
+});
+const renderRb = makeTable($("rbTbl"), [
+  {key: "full_name", label: "Player", l: 1, fmt: (v, r) => esc(v) + (MY_IDS.has(r.player_id) ? ' <span class="chip neu">Mine</span>' : "")},
+  {key: "team", label: "Team"},
+  {key: "games", label: "G", fmt: f(0)},
+  {key: "rush_att", label: "Car", fmt: f(0)},
+  {key: "carries_pg", label: "Car/G", fmt: f(1)},
+  {key: "rush_yds", label: "Rush yds", fmt: f(0)},
+  {key: "ypc", label: "YPC", fmt: f(2)},
+  {key: "rush_td", label: "Rush TD", fmt: f(0)},
+  {key: "targets_pg", label: "Tgt/G", fmt: f(1)},
+  {key: "rush_fp_pg", label: "Rush FP/G", fmt: f(1)},
+  {key: "rec_fp_pg", label: "Rec FP/G", fmt: f(1)},
+  {key: "ppg", label: "PPG", fmt: v => `<b>${v.toFixed(1)}</b>`},
+], rbRows, {sortKey: "ppg"});
+$("rbSeason").onclick = e => {
+  const b = e.target.closest("button"); if (!b) return;
+  $("rbSeason").querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b));
+  rbSeason = b.dataset.v; drawChart("rbChart"); renderRb();
+};
+$("rbMineOnly").onchange = () => { drawChart("rbChart"); renderRb(); };
+
 // ---------- 5.9 rankings ----------
 const TIERS = [[12, "Elite"], [24, "Locks"], [40, "Strong Starters"], [60, "Solid Starters"], [80, "Flex"],
                [100, "Streamers"], [130, "Bench Stash"], [160, "Deep Bench"], [200, "Waiver Watch"]];
@@ -876,10 +962,12 @@ const RANK_MODES = {
          multTitle: `Average opponent multiplier in fantasy playoff weeks ${(SOS.playoff_weeks || []).join(", ")} (SOS tab)`},
 };
 let rankMode = "week";
+const W = {cur: Math.round(META.ranking_weights[META.season] * 100), p1: Math.round(META.ranking_weights[META.season - 1] * 100),
+           p2: Math.round(META.ranking_weights[META.season - 2] * 100), x: Math.round((1 - META.xfp_ppg_weight) * 100)};
 const sgn = v => v == null ? "—" : `<span class="${v > 0.05 ? "pos-num" : v < -0.05 ? "neg-num" : "muted"}">${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(1)}</span>`;
 const chipsCell = (v, r) => (r.chips || []).filter(c => rankMode === "week" || !c.week).map(c =>
   `<button type="button" class="chip ${c.tone} sig" data-goto="${c.tab}" title="Open the ${esc(c.tab)} tab">${esc(c.t)}</button>`).join("");
-const sigTitle = r => `xFP ${(r.sig_xfp ?? 0).toFixed(2)} · Plays ${(r.sig_pace ?? 0).toFixed(2)} · Efficiency ${(r.sig_eff ?? 0).toFixed(2)} (points, capped at ±15% of skill PPG)`;
+const sigTitle = r => `Plays ${(r.sig_pace ?? 0).toFixed(2)} · Efficiency ${(r.sig_eff ?? 0).toFixed(2)} (points, capped at ±15% of skill PPG)`;
 let rankCols;
 function rankColumns() {
   const m = RANK_MODES[rankMode];
@@ -894,9 +982,11 @@ function rankColumns() {
     {key: "opp_rank", label: "Opp rank", fmt: rankCell});
   cols.push(
     {key: "games", label: "G", fmt: f(0)},
-    {key: "ppg", label: `PPG ${META.season}`, fmt: f(1)},
-    {key: "ppg_3yr", label: "PPG 3-yr", fmt: f(1)},
-    {key: "skill_ppg", label: "Skill PPG", fmt: f(1), title: "3-yr baseline blended with this season, damped by volume ratio"},
+    {key: "ppg", label: `PPG ${META.season}`, fmt: f(1), title: "Actual PPR points per game"},
+    {key: "xppg", label: `xPPG ${META.season}`, fmt: f(1), title: "Points per game with rushing/receiving points replaced by expected points (xFP tab); QB passing stays actual"},
+    {key: `ppg_${META.season - 1}`, label: `PPG ${META.season - 1}`, fmt: f(1)},
+    {key: `ppg_${META.season - 2}`, label: `PPG ${META.season - 2}`, fmt: f(1)},
+    {key: "skill_ppg", label: "Skill PPG", fmt: f(1), title: `${W.cur}% ${META.season} + ${W.p1}% ${META.season - 1} + ${W.p2}% ${META.season - 2} (renormalized over seasons played); each season is ${W.x}% actual + ${100 - W.x}% expected points`},
     {key: "sig_total", label: "Signals", fmt: (v, r) => `<span title="${esc(sigTitle(r))}">${sgn(v)}</span>`,
      title: "Points added/removed by xFP, Plays/G and efficiency signals"},
     {key: "skill_adj", label: "Adj PPG", fmt: f(1)},
@@ -1085,7 +1175,7 @@ const renderSos = makeTable($("sosTbl"), [
 onPos("sos", renderSos);
 
 // ---------- tabs ----------
-const TAB_IDS = ["lineup", "startsit", "sos", "plays", "separation", "defense", "slot", "xfp", "redzone", "skill", "rankings"];
+const TAB_IDS = ["lineup", "startsit", "sos", "plays", "separation", "defense", "slot", "xfp", "redzone", "skill", "rbeff", "rankings"];
 const tabsBar = $("tabs");
 function showTab(id, opts = {}) {
   if (!TAB_IDS.includes(id)) id = TAB_IDS[0];
