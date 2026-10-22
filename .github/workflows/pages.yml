@@ -1,0 +1,93 @@
+# Rebuilds the dashboard from fresh nflverse data and deploys it to GitHub Pages.
+# Runs every Tuesday at 7:07am Eastern, and on demand ("Run workflow", which the
+# site's Refresh data button links to).
+name: Build and deploy dashboard
+
+on:
+  schedule:
+    # Actions cron is UTC only. One entry per DST state; the guard step below
+    # skips whichever one isn't 7am in New York that day.
+    - cron: "7 11 * * 2"   # 7:07am EDT
+    - cron: "7 12 * * 2"   # 7:07am EST
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["src/**", "templates/**", "config.py", "requirements.txt", ".github/workflows/pages.yml"]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Skip the cron entry for the other DST state
+        id: guard
+        run: |
+          run=true
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            offset=$(TZ=America/New_York date +%z)
+            if [ "${{ github.event.schedule }}" = "7 11 * * 2" ] && [ "$offset" != "-0400" ]; then run=false; fi
+            if [ "${{ github.event.schedule }}" = "7 12 * * 2" ] && [ "$offset" != "-0500" ]; then run=false; fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        if: steps.guard.outputs.run == 'true'
+
+      - uses: actions/setup-python@v5
+        if: steps.guard.outputs.run == 'true'
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        if: steps.guard.outputs.run == 'true'
+        run: pip install -r requirements.txt
+
+      # Prior seasons never change, so keep them between runs; src.fetch drops and
+      # re-downloads the current season's files itself.
+      - name: Restore cached nflverse data
+        if: steps.guard.outputs.run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: data
+          key: nflverse-${{ github.run_id }}
+          restore-keys: nflverse-
+
+      - name: Fetch nflverse data
+        if: steps.guard.outputs.run == 'true'
+        run: python -m src.fetch
+
+      - name: Build dashboard
+        if: steps.guard.outputs.run == 'true'
+        run: |
+          mkdir -p site
+          python -m src.build_dashboard site/index.html
+          touch site/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.guard.outputs.run == 'true'
+        with:
+          path: site
+
+    outputs:
+      run: ${{ steps.guard.outputs.run }}
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

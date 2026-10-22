@@ -30,7 +30,16 @@ python -m src.build_dashboard    # compute every section, write dashboard.html
 (`python -m src.build_dashboard site/index.html`). `--fragment` drops the
 `<html>/<head>/<body>` wrapper, for hosts that add their own page skeleton.
 
-**Refresh button:** the published page has a "Refresh data" button that fires
+**Website (GitHub Pages):** `.github/workflows/pages.yml` fetches fresh data,
+builds `site/index.html` and deploys it to
+https://prajeshgpat.github.io/fantasy-football-dashboard/ every Tuesday at
+7:07am Eastern, on every push to `main` that touches the code, and whenever you
+press "Run workflow" on the workflow's page in GitHub. The site's "Refresh data"
+button links to that page (no token is kept in the page). One-time setup: repo
+Settings → Pages → Source: "GitHub Actions". For a custom domain, add it under
+Settings → Pages and point the domain's DNS at GitHub as that page describes.
+
+**Refresh button (claude.ai artifact):** the published artifact has a "Refresh data" button that fires
 the Claude Code routine named by `REFRESH_TRIGGER_ID` in `config.py`. The
 routine re-runs fetch + build and republishes the page, and open copies reload
 by themselves (about 3-5 minutes). The button only appears on the published

@@ -196,6 +196,8 @@ def compute() -> dict[str, object]:
         "min_routes": separation.MIN_ROUTES,
         "low_confidence": LOW_CONFIDENCE,
         "refresh_trigger_id": getattr(config, "REFRESH_TRIGGER_ID", None),
+        "refresh_url": (f"https://github.com/{config.GITHUB_REPO}/actions/workflows/{config.PAGES_WORKFLOW}"
+                        if getattr(config, "GITHUB_REPO", None) else None),
     }
     return {
         "META": meta,

@@ -1195,7 +1195,20 @@ else { try { const t = localStorage.getItem("ffd-tab"); if (TAB_IDS.includes(t))
 showTab(initialTab, {silent: true});
 
 // ---------- refresh button ----------
-// Fires the Claude Code routine that re-fetches nflverse data, rebuilds and republishes
+// On the website (GitHub Pages) the button opens the GitHub Actions workflow, where
+// "Run workflow" rebuilds and redeploys the site. No token lives in the page.
+if (META.refresh_url && !(window.claude && window.claude.use)) {
+  const box = $("refreshBox"), btn = $("refreshBtn"), status = $("refreshStatus");
+  box.hidden = false;
+  btn.title = "Opens the GitHub workflow that re-downloads nflverse data and rebuilds this site";
+  btn.onclick = () => {
+    window.open(META.refresh_url, "_blank", "noopener");
+    status.textContent = "In GitHub, tap “Run workflow”. The site updates in about 5 minutes; reload then.";
+    status.className = "refresh-status";
+  };
+}
+
+// In the claude.ai artifact: fires the Claude Code routine that re-fetches nflverse data, rebuilds and republishes
 // this page. Only offered where the page can reach the Claude Code Remote connector
 // (the published artifact); every open view reloads by itself when the new version lands.
 (async () => {

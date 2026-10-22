@@ -46,6 +46,11 @@ OUTPUT_HTML = "dashboard.html"
 # None to hide the button.
 REFRESH_TRIGGER_ID = "trig_01S5RJqFPoxZAyHDp9U5VtJp"
 
+# GitHub Pages site: the weekly rebuild runs in .github/workflows/pages.yml, and
+# the site's "Refresh data" button opens that workflow so you can tap "Run workflow".
+GITHUB_REPO = "prajeshgpat/fantasy-football-dashboard"
+PAGES_WORKFLOW = "pages.yml"
+
 TEAM_NAMES = {
     "ARI": "Cardinals", "ATL": "Falcons", "BAL": "Ravens", "BUF": "Bills",
     "CAR": "Panthers", "CHI": "Bears", "CIN": "Bengals", "CLE": "Browns",
