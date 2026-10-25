@@ -30,7 +30,7 @@ MY_ROSTER = [
     "Brock Bowers",
     "Jalen Coker",
     "Stefon Diggs",
-    "RJ Harvey",
+    "A.J. Brown",
     "Isaiah Likely",
     "Jeremiyah Love",
     "Jordan Mason",
