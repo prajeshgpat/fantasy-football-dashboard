@@ -67,9 +67,6 @@ header {
 .refresh[hidden] { display: none; }
 .refresh + #themeBtn { margin-left: 0; }
 .refresh-status { font-size: 12px; color: var(--text-2); }
-.refresh-status.err { color: var(--bad); }
-.refresh-status.ok { color: var(--good); }
-#refreshBtn:disabled { opacity: .6; cursor: progress; }
 .tabs {
   display: flex; gap: 6px; width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;
   scrollbar-width: none; padding-bottom: 1px;
@@ -1195,9 +1192,9 @@ else { try { const t = localStorage.getItem("ffd-tab"); if (TAB_IDS.includes(t))
 showTab(initialTab, {silent: true});
 
 // ---------- refresh button ----------
-// On the website (GitHub Pages) the button opens the GitHub Actions workflow, where
-// "Run workflow" rebuilds and redeploys the site. No token lives in the page.
-if (META.refresh_url && !(window.claude && window.claude.use)) {
+// Opens the GitHub Actions workflow, where "Run workflow" rebuilds and redeploys
+// the site. No token lives in the page.
+if (META.refresh_url) {
   const box = $("refreshBox"), btn = $("refreshBtn"), status = $("refreshStatus");
   box.hidden = false;
   btn.title = "Opens the GitHub workflow that re-downloads nflverse data and rebuilds this site";
@@ -1207,107 +1204,6 @@ if (META.refresh_url && !(window.claude && window.claude.use)) {
     status.className = "refresh-status";
   };
 }
-
-// In the claude.ai artifact: fires the Claude Code routine that re-fetches nflverse data, rebuilds and republishes
-// this page. Only offered where the page can reach the Claude Code Remote connector
-// (the published artifact); every open view reloads by itself when the new version lands.
-(async () => {
-  const TRIGGER = META.refresh_trigger_id;
-  if (!TRIGGER || !window.claude || !window.claude.use) return;
-  const mcp = await window.claude.use("mcp").catch(() => null);
-  if (!mcp) return;
-  const SERVER = "Claude Code Remote";
-  const box = $("refreshBox"), btn = $("refreshBtn"), status = $("refreshStatus");
-  box.hidden = false;
-  const RUN_TIMEOUT_MS = 15 * 60 * 1000, POLL_MS = 30 * 1000;
-  let pollTimer = null;
-
-  const say = (text, cls = "") => { status.textContent = text; status.className = "refresh-status " + cls; };
-  const ago = iso => {
-    const m = Math.round((Date.now() - Date.parse(iso)) / 60000);
-    return m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`;
-  };
-  const lastRun = async () => {
-    const res = await mcp.callTool(SERVER, "get_trigger", {trigger_id: TRIGGER}, {cache: false});
-    return (res.payload && res.payload.trigger && res.payload.trigger.last_run) || null;
-  };
-  const running = run => run && !run.finished_at && run.fired_at &&
-    Date.now() - Date.parse(run.fired_at) < RUN_TIMEOUT_MS;
-
-  // One message per error code that has its own fix; everything else gets the generic line.
-  // `step` says which call failed: reading the routine's status, or starting it.
-  function explain(e, step) {
-    const code = (e && e.code) || "unknown";
-    const tool = step === "fire" ? "fire_trigger" : "get_trigger";
-    const tag = ` [${code} · ${tool}]`;
-    const perm = `In claude.ai Settings → Connectors → Claude Code, set "${tool}"` +
-      (step === "fire" ? "" : ` and "fire_trigger"`) + ` to Always allow, then try again.`;
-    if (code === "approval_required") return "This action needs approval each time, which pages can't ask for. " + perm + tag;
-    if (code === "blocked_by_policy") return "This action is blocked for this page. " + perm +
-      " If an admin manages your account, they may need to allow it." + tag;
-    if (code === "needs_reauth") return "Reconnect Claude Code in claude.ai Settings → Connectors, then try again." + tag;
-    if (code === "server_not_connected" || code === "selection_required")
-      return "Claude Code isn't connected for this page. Check claude.ai Settings → Connectors." + tag;
-    if (code === "not_in_manifest" || code === "not_granted" || code === "consent_required")
-      return "Refreshing wasn't allowed for this page. Allow Claude Code when asked, then try again." + tag;
-    if (code === "tool_error") return "The refresh routine couldn't be started: " + (e.message || "unknown error") + tag;
-    if (code === "server_unavailable" || code === "upstream_error") return "Couldn't reach Claude Code just now. Try again in a minute." + tag;
-    return "Refresh failed" + (e && e.message ? ": " + e.message : ".") + tag;
-  }
-
-  function watch(firedAt) {
-    btn.disabled = true;
-    clearTimeout(pollTimer);
-    const tick = async () => {
-      let run;
-      try { run = await lastRun(); } catch (e) {
-        if (["approval_required", "blocked_by_policy", "not_in_manifest"].includes(e && e.code)) {
-          // Can't read progress here, but the run was started: the page reloads itself when it lands.
-          btn.disabled = false;
-          say("Refresh started. The page reloads by itself when the new data is ready (about 3–5 min).", "ok");
-          return;
-        }
-        // A status read failing doesn't mean the run failed; keep waiting quietly, up to the timeout.
-        if (Date.now() - firedAt > RUN_TIMEOUT_MS) { btn.disabled = false; say("Couldn't confirm the refresh finished. Check the routine in claude.ai.", "err"); return; }
-        pollTimer = setTimeout(tick, POLL_MS * 2); return;
-      }
-      const mine = run && run.fired_at && Date.parse(run.fired_at) >= firedAt - 5000;
-      if (mine && run.finished_at) {
-        btn.disabled = false;
-        if (/SUCCEEDED/.test(run.status || "")) say("Refreshed. Loading the new version…", "ok");
-        else say("The refresh run failed. Try again, or check the routine in claude.ai.", "err");
-        return;
-      }
-      if (Date.now() - firedAt > RUN_TIMEOUT_MS) {
-        btn.disabled = false; say("Still no result after 15 min. Check the routine in claude.ai.", "err"); return;
-      }
-      say(`Refreshing… started ${ago(new Date(firedAt).toISOString())}. The page reloads when done (about 3–5 min).`);
-      pollTimer = setTimeout(tick, POLL_MS);
-    };
-    tick();
-  }
-
-  btn.onclick = async () => {
-    btn.disabled = true;
-    say("Checking…");
-    let step = "status";
-    try {
-      // The status check only prevents a double run; if it's refused, still try to start.
-      let run = null;
-      try { run = await lastRun(); } catch (e) { if (!["approval_required", "blocked_by_policy"].includes(e && e.code)) throw e; }
-      if (running(run)) { watch(Date.parse(run.fired_at)); return; }   // don't start a second run
-      step = "fire";
-      const firedAt = Date.now();
-      await mcp.callTool(SERVER, "fire_trigger",
-        {trigger_id: TRIGGER, text: "Manual refresh requested from the dashboard's Refresh data button."},
-        {cache: false});
-      watch(firedAt);
-    } catch (e) {
-      btn.disabled = false;
-      say(explain(e, step), "err");
-    }
-  };
-})();
 })();
 </script>
 </body>

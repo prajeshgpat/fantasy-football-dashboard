@@ -41,13 +41,9 @@ FANTASY_PLAYOFF_WEEKS = [15, 16, 17]
 
 OUTPUT_HTML = "dashboard.html"
 
-# Claude Code routine that re-runs fetch + build and republishes the dashboard.
-# The page's "Refresh data" button fires it (published artifact only). Set to
-# None to hide the button.
-REFRESH_TRIGGER_ID = "trig_01S5RJqFPoxZAyHDp9U5VtJp"
-
-# GitHub Pages site: the weekly rebuild runs in .github/workflows/pages.yml, and
-# the site's "Refresh data" button opens that workflow so you can tap "Run workflow".
+# GitHub Pages site: rebuilds run in .github/workflows/pages.yml, and the site's
+# "Refresh data" button opens that workflow so you can tap "Run workflow".
+# Set GITHUB_REPO to None to hide the button.
 GITHUB_REPO = "prajeshgpat/fantasy-football-dashboard"
 PAGES_WORKFLOW = "pages.yml"
 

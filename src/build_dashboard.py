@@ -195,7 +195,6 @@ def compute() -> dict[str, object]:
         "tprr_true_available": sep["tprr"].notna().any(),
         "min_routes": separation.MIN_ROUTES,
         "low_confidence": LOW_CONFIDENCE,
-        "refresh_trigger_id": getattr(config, "REFRESH_TRIGGER_ID", None),
         "refresh_url": (f"https://github.com/{config.GITHUB_REPO}/actions/workflows/{config.PAGES_WORKFLOW}"
                         if getattr(config, "GITHUB_REPO", None) else None),
     }
@@ -224,29 +223,18 @@ def compute() -> dict[str, object]:
     }
 
 
-def to_fragment(html: str) -> str:
-    """Strip the document wrapper (doctype/html/head/body) for hosts that supply
-    their own skeleton, keeping <title>, <style> and <script> tags in order."""
-    html = re.sub(r"<!doctype[^>]*>|</?html[^>]*>|</?head>|</?body>|<meta [^>]*>", "", html, flags=re.I)
-    return html.strip() + "\n"
-
-
-def build(output: Path | None = None, fragment: bool = False) -> Path:
+def build(output: Path | None = None) -> Path:
     output = output or ROOT / config.OUTPUT_HTML
     html = TEMPLATE.read_text(encoding="utf-8")
     for token, data in compute().items():
         html = html.replace("{{" + token + "}}", to_js(data))
     check_balanced(html)
-    if fragment:
-        html = to_fragment(html)
     output.write_text(html, encoding="utf-8")
     print(f"wrote {output} ({output.stat().st_size / 1024:.0f} KB)", file=sys.stderr)
     return output
 
 
 if __name__ == "__main__":
-    # usage: python -m src.build_dashboard [--fragment] [output.html]
+    # usage: python -m src.build_dashboard [output.html]
     args = sys.argv[1:]
-    frag = "--fragment" in args
-    paths = [a for a in args if a != "--fragment"]
-    build(Path(paths[0]) if paths else None, fragment=frag)
+    build(Path(args[0]) if args else None)

@@ -27,8 +27,7 @@ python -m src.build_dashboard    # compute every section, write dashboard.html
 ```
 
 `build_dashboard` accepts an optional output path
-(`python -m src.build_dashboard site/index.html`). `--fragment` drops the
-`<html>/<head>/<body>` wrapper, for hosts that add their own page skeleton.
+(`python -m src.build_dashboard site/index.html`).
 
 **Website (GitHub Pages):** `.github/workflows/pages.yml` fetches fresh data,
 builds `site/index.html` and deploys it to
@@ -39,15 +38,7 @@ button links to that page (no token is kept in the page). One-time setup: repo
 Settings → Pages → Source: "GitHub Actions". For a custom domain, add it under
 Settings → Pages and point the domain's DNS at GitHub as that page describes.
 
-**Refresh button (claude.ai artifact):** the published artifact has a "Refresh data" button that fires
-the Claude Code routine named by `REFRESH_TRIGGER_ID` in `config.py` (the
-routine's own schedule is turned off; it only runs when fired). The
-routine re-runs fetch + build and republishes the page, and open copies reload
-by themselves (about 3-5 minutes). The button only appears on the published
-artifact, which can reach the Claude Code Remote connector; the local
-`dashboard.html` doesn't show it.
-
-**Weekly refresh:** re-run both. `src.fetch` drops the cached current-season
+**Refreshing locally:** re-run both. `src.fetch` drops the cached current-season
 files (pbp, roster, snap counts, schedule, NGS) before re-downloading; prior
 seasons stay cached. nflverse usually posts a completed week within ~24h of
 Monday night's game.
