@@ -320,7 +320,7 @@ details.note[open] summary { margin-bottom: 4px; }
 
 <section id="dst" role="tabpanel" hidden>
   <h2 id="dstTitle">Best D/ST Matchups</h2>
-  <p class="desc">Which fantasy defenses to start, by matchup, not just by how good the defense is. <b>Results</b>: D/ST points this defense scores per game plus what the opponent gives up to defenses per game, minus the league average. <b>EPA proj</b>: expected opponent EPA per play in this game, built from the opponent's pass and rush EPA and the defense's pass and rush EPA allowed, weighted by how often the opponent passes in neutral game script; converted to D/ST points with the fitted relationship between offensive EPA and D/ST points. <b>Yards proj</b>: expected yards allowed, from the opponent's passing yards per game and the defense's passing yards allowed per game (each against the league average), plus the same for rushing, scored with the D/ST yards-allowed tiers. <b>Proj</b> is the average of the three. This season's numbers are blended with last season's (counted as <span id="dstPrior"></span> games). EPA comes from nflverse play-by-play, the same source as nfelo's EPA tiers. D/ST points use ESPN standard scoring (sacks, takeaways, TDs, safeties, blocks, points and yards allowed).</p>
+  <p class="desc">Which fantasy defenses to start, by matchup, not just by how good the defense is. Four projections of D/ST points, each from what was known before kickoff: <b>Results</b> (D/ST points this defense scores per game plus what the opponent gives up to defenses, minus the league average); <b>EPA proj</b> (expected opponent EPA per play from each side's pass and rush EPA, weighted by how often the opponent passes in neutral game script); <b>Yards proj</b> (expected passing and rushing yards allowed, scored with the D/ST yards-allowed tiers); and <b>Line proj</b> (from the opponent's implied points in the betting line). <b>Proj</b> blends them with weights fitted to past games: <span id="dstWeights"></span>. This season's numbers are blended with last season's (counted as <span id="dstPrior"></span> games). EPA comes from nflverse play-by-play, the same source as nfelo's EPA tiers. D/ST points use ESPN standard scoring.</p>
   <div class="note" id="dstNote"></div>
   <div class="controls"><button data-reset="dstChart">Reset zoom</button></div>
   <div class="chart-wrap"><canvas id="dstChart" aria-label="Scatter of expected opponent EPA per play vs projected D/ST points"></canvas></div>
@@ -973,8 +973,15 @@ $("rbMineOnly").onchange = () => { drawChart("rbChart"); renderRb(); };
   const pct = v => (v * 100).toFixed(v < 0.1 ? 1 : 0) + "%";
   $("dstTitle").textContent = `Best D/ST Matchups${DST.week ? " — Week " + DST.week : ""}`;
   $("dstPrior").textContent = DST.prior_games;
+  const WN = {results: "results", epa_proj: "EPA", yards_proj: "yards", line_proj: "betting line"};
+  $("dstWeights").textContent = Object.entries(DST.weights).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `${Math.round(v * 100)}% ${WN[k]}`).join(", ") +
+    (Object.values(DST.weights).some(v => v === 0) ? ` (${Object.entries(DST.weights).filter(([, v]) => v === 0).map(([k]) => WN[k]).join(" and ")} get no weight: the line already reflects them)` : "");
   $("dstNote").innerHTML = `League average: ${L.dst_pg.toFixed(1)} D/ST pts/G · ${L.pass_ypg.toFixed(0)} pass + ${L.rush_ypg.toFixed(0)} rush yds/G · neutral pass rate ${(L.pass_rate * 100).toFixed(0)}% · ` +
-    `${DST.slope.toFixed(1)} D/ST pts per +1.0 offensive EPA/play. The pass/run <b>Fit</b> column isolates your tendency idea ` +
+    `${DST.slope.toFixed(1)} D/ST pts per +1.0 offensive EPA/play · ${DST.line.per_point.toFixed(2)} D/ST pts per opponent implied point. ` +
+    `<b>Backtest</b> (${DST.backtest_games.toLocaleString()} games, each season predicted with weights fitted on the others): correlation with actual D/ST points ` +
+    `${DST.backtest.blend.corr.toFixed(2)} for the blend vs ${DST.backtest["old (thirds, no line)"].corr.toFixed(2)} without the line; ` +
+    `${DST.backtest.results.corr.toFixed(2)} results, ${DST.backtest.epa_proj.corr.toFixed(2)} EPA, ${DST.backtest.yards_proj.corr.toFixed(2)} yards, ${DST.backtest.line_proj.corr.toFixed(2)} line alone. The pass/run <b>Fit</b> column isolates your tendency idea ` +
     `(opponent leans pass and the defense is strong against the pass, or the reverse). It is real but small, usually under half a point, ` +
     `because teams' pass rates differ from the league by only a few points. Opponent quality matters far more. Teams on bye are left out.`;
   const epa = v => v == null ? '<span class="muted">—</span>' : (v > 0 ? "+" : "") + v.toFixed(3);
@@ -1000,7 +1007,7 @@ $("rbMineOnly").onchange = () => { drawChart("rbChart"); renderRb(); };
     {key: "rank", label: "#"},
     {key: "defense", label: "Defense", l: 1, fmt: v => `<b>${esc(v)}</b> <span class="muted">${esc((TEAMS[v] || {}).name || "")}</span>`},
     {key: "opp", label: "Opp", fmt: (v, r) => (r.home ? "vs " : "@ ") + esc(v)},
-    {key: "proj", label: "Proj", fmt: v => `<b>${v.toFixed(1)}</b>`, title: "Average of results, EPA projection and yards projection"},
+    {key: "proj", label: "Proj", fmt: v => `<b>${v.toFixed(1)}</b>`, title: "Blend of the four projections, weighted as fitted to past games"},
     {key: "boom_pct", label: `Boom ${B.summary.boom}+`, fmt: v => v == null ? '<span class="muted">no line</span>' : `<b>${pct(v)}</b>`,
      title: `Chance of ${B.summary.boom}+ D/ST points, from the opponent's implied points (base rate ${pct(B.summary.base_boom)})`},
     {key: "smash_pct", label: `${B.summary.smash}+`, fmt: v => v == null ? "" : pct(v),
@@ -1010,6 +1017,7 @@ $("rbMineOnly").onchange = () => { drawChart("rbChart"); renderRb(); };
     {key: "flags", label: "Boom signs", l: 1, fmt: v => (v || []).map(t => `<span class="chip warn">${esc(t)}</span>`).join(""),
      title: "Backup/new opposing QB, turnover-prone or sack-prone opponent (already reflected in the line, shown as the why)"},
     {key: "results", label: "Results", fmt: f(1), title: "Defense D/ST pts/G + opponent D/ST pts allowed/G − league average"},
+    {key: "line_proj", label: "Line proj", fmt: f(1), title: "D/ST points implied by the opponent's implied points (betting line)"},
     {key: "epa_proj", label: "EPA proj", fmt: f(1), title: "D/ST points implied by the expected opponent EPA/play"},
     {key: "yards_proj", label: "Yards proj", fmt: f(1), title: "D/ST points implied by the expected yards allowed (yards-allowed tiers), centered on the league average"},
     {key: "exp_yds", label: "Exp yds", fmt: (v, r) => `${v.toFixed(0)} <span class="muted">${r.exp_pass_yds.toFixed(0)}/${r.exp_rush_yds.toFixed(0)}</span>`,
@@ -1028,7 +1036,7 @@ $("rbMineOnly").onchange = () => { drawChart("rbChart"); renderRb(); };
     {key: "opp_dst_allowed_pg", label: "Opp allows/G", fmt: f(1), title: "D/ST points this opponent gives up per game"},
     {key: "sack_edge", label: "Sack %", fmt: v => (v * 100).toFixed(1) + "%", title: "Average of the defense's sack rate and the opponent's sack rate allowed"},
     {key: "takeaway_edge", label: "TO/G", fmt: f(2), title: "Average of the defense's takeaways/G and the opponent's giveaways/G"},
-    {key: "fit", label: "Fit", fmt: (v, r) => `${signed(2)(v)} ${fitChip(r)}`, title: "D/ST points from the opponent's pass/run lean meeting the defense's pass/run strength"},
+    {key: "fit", label: "Fit", fmt: (v, r) => `${signed(2)(v)} ${fitChip(r)}`, title: "Within the EPA projection: D/ST points from the opponent's pass/run lean meeting the defense's pass/run strength"},
   ], () => DST.rows, {sortKey: "rank", sortDir: 1});
 
   const S = B.summary;
