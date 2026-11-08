@@ -31,6 +31,9 @@ PBP_COLUMNS = [
     # D/ST matchups: EPA splits and the defensive scoring events
     "epa", "pass", "rush", "yards_gained", "touchdown", "td_team", "return_touchdown", "safety",
     "punt_blocked", "field_goal_result", "extra_point_result",
+    # Defense clusters: situational and pressure columns
+    "success", "first_down", "qb_hit", "third_down_converted", "third_down_failed",
+    "fourth_down_converted", "fourth_down_failed",
 ]
 
 
@@ -110,10 +113,21 @@ def load_participation(year: int) -> pd.DataFrame | None:
     return pd.read_parquet(path, columns=["nflverse_game_id", "play_id", "offense_players"])
 
 
+def load_ftn(year: int) -> pd.DataFrame | None:
+    """FTN charting (blitzers, pass rushers, box count per play). None if not published."""
+    try:
+        path = _download("ftn_charting", f"ftn_charting_{year}.parquet")
+    except NotPublished:
+        return None
+    df = pd.read_parquet(path, columns=["nflverse_game_id", "nflverse_play_id", "n_defense_box",
+                                        "n_blitzers", "n_pass_rushers"])
+    return df.rename(columns={"nflverse_game_id": "game_id", "nflverse_play_id": "play_id"})
+
+
 def refresh_current(year: int) -> None:
     """Drop cached current-season files so the weekly refresh picks up new games."""
     for pattern in (f"play_by_play_{year}.csv.gz", f"pbp_{year}.pkl", f"roster_{year}.parquet",
-                    f"snap_counts_{year}.parquet", "games.csv", "ngs_*.csv.gz"):
+                    f"snap_counts_{year}.parquet", f"ftn_charting_{year}.parquet", "games.csv", "ngs_*.csv.gz"):
         for p in DATA_DIR.glob(pattern):
             p.unlink()
 
@@ -131,6 +145,8 @@ def main() -> None:
         print(f"participation {y}: " + ("not published (in-season)" if part is None else f"{len(part):,} plays"),
               file=sys.stderr)
     print(f"schedule: {len(load_schedule()):,} games", file=sys.stderr)
+    ftn = load_ftn(config.SEASON)
+    print(f"ftn charting {config.SEASON}: " + ("not published" if ftn is None else f"{len(ftn):,} plays"), file=sys.stderr)
     for kind in ("receiving", "rushing", "passing"):
         print(f"ngs {kind}: {len(load_ngs(kind)):,} rows", file=sys.stderr)
 

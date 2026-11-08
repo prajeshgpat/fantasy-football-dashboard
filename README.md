@@ -65,6 +65,7 @@ src/rankings.py            Top-200 tiered rankings (this week / rest of season /
 src/rb_efficiency.py       RB yards per carry vs. PPG
 src/dst.py                 D/ST matchups (EPA by pass/rush and tendencies)
 src/dst_boom.py            D/ST boom odds and backtest
+src/def_clusters.py        k-means defense clusters
 src/signals.py             per-player adjustments the Top 200 takes from every other tab
 src/build_dashboard.py     inject JSON into the HTML template
 templates/dashboard.html   HTML/CSS/JS template with {{TOKEN}} placeholders
@@ -86,6 +87,7 @@ data/                      gitignored cache (all re-downloadable)
 | Red zone | Targets/carries inside the 20 and 10, TDs, and TD-regression candidates. |
 | CPOE & RYOE | NGS season aggregates. |
 | D/ST | Next week's defense matchups. Four pre-kickoff projections of D/ST points: fantasy results (defense's D/ST pts/G + opponent's D/ST pts allowed/G − league), EPA (each side's pass and rush EPA/play weighted by the opponent's neutral-script pass rate), yards (pass/rush yards per game vs. allowed, scored with the yards-allowed tiers) and the betting line (opponent implied points). Proj blends them with non-negative weights refitted every build to every game since 2024 and backtested season by season. Boom odds (15+ and 20+) come from the opponent's implied points; turnover/sack/backup-QB signals are shown as boom signs. Also lists every 20+ game with its pre-game line. ESPN standard D/ST scoring (`DST_SCORING`). |
+| Def Clusters | All 32 defenses grouped into 4 clusters with k-means (as PFF does), on free data: play-by-play (EPA overall/pass/rush, success rate, 1st-down and 3rd-down rates allowed, sack and QB-hit rates, explosive plays, takeaways, run stuffs) and FTN charting (blitz rate, pass rushers, men in the box). Stats are standardized and capped at ±2 SD; clusters are ordered best to worst by EPA allowed and named from their profile. A 2-D principal-component map, a card per cluster (averages vs. league, D/ST pts/G) and a sortable team table with ranks and a profile note. |
 | RB YPC | Yards per carry (x) vs. PPR points per game (y) for every back with 10+ carries and 5+ per game, this season or last; median lines split it into quadrants, point size = carries/G, your backs highlighted. |
 | Top 200 | Built from every other tab. Skill PPG weights this season 70%, last season 20%, two seasons back 10% (`RANKING_WEIGHTS`), and each season's PPG is 50% actual / 50% expected points (`XFP_PPG_WEIGHT`). It is then moved (±15% max) by Plays/G sustainability, separation change, CPOE (QB) and RYOE (RB); this week multiplies by the Def vs Pos matchup (WR1/WR2 rows, Strong funnels raise confidence) and slot/perimeter fit; Rest of season and Playoffs use SOS instead. Red zone is shown as evidence only (xFP already prices TDs). Each row lists the signals behind it; tapping one opens that tab. |
 

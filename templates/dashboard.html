@@ -157,6 +157,14 @@ button.chip.sig:hover { filter: brightness(0.95); text-decoration: underline; }
 .sos .cell.past { opacity: .45; }
 .sos .cell.bye { color: var(--text-3); }
 .pos-num { color: var(--good); } .neg-num { color: var(--bad); }
+.clu-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 12px; margin: 16px 0; }
+.clu-card { border: 1px solid var(--grid); border-left: 4px solid var(--c); border-radius: 8px; padding: 10px 12px; background: var(--surface); min-width: 0; }
+.clu-card h4 { margin: 0 0 6px; font-size: 14px; }
+.clu-card .teams { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+.clu-card .teams span { font-size: 12px; padding: 1px 6px; border-radius: 4px; background: color-mix(in srgb, var(--c) 18%, transparent); }
+.clu-card dl { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; margin: 6px 0 0; font-size: 12px; color: var(--text-2); }
+.clu-card dd { margin: 0; text-align: right; color: var(--text); font-variant-numeric: tabular-nums; }
+.clu-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--c); margin-right: 4px; vertical-align: -1px; }
 .muted { color: var(--text-3); }
 .tier-row td { background: var(--surface-2); font-weight: 600; text-align: left; color: var(--text-2); font-size: 12px; }
 .grid2 { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 16px; }
@@ -195,6 +203,7 @@ details.note[open] summary { margin-bottom: 4px; }
       <button data-tab="skill" role="tab">CPOE/RYOE</button>
       <button data-tab="rbeff" role="tab">RB YPC</button>
       <button data-tab="dst" role="tab">D/ST</button>
+      <button data-tab="clusters" role="tab">Def Clusters</button>
       <button data-tab="rankings" role="tab">Top 200</button>
     </div>
   </div>
@@ -335,6 +344,18 @@ details.note[open] summary { margin-bottom: 4px; }
   <div class="tbl-wrap" style="max-height:480px"><table id="boomHist"></table></div>
 </section>
 
+<section id="clusters" role="tabpanel" hidden>
+  <h2 id="cluTitle">Defense Clusters</h2>
+  <p class="desc" id="cluDesc"></p>
+  <div class="controls"><button data-reset="cluChart">Reset zoom</button></div>
+  <div class="legend" id="cluLegend"></div>
+  <div class="chart-wrap"><canvas id="cluChart" aria-label="Map of all 32 defenses by their two main components, colored by cluster"></canvas></div>
+  <div class="clu-cards" id="cluCards"></div>
+  <h3>Every defense</h3>
+  <div class="controls"><span class="seg" id="cluFilter"></span></div>
+  <div class="tbl-wrap" style="max-height:640px"><table id="cluTbl"></table></div>
+</section>
+
 <section id="rankings" role="tabpanel" hidden>
   <h2>Top 200 Tiered Rankings</h2>
   <p class="desc">Every other tab feeds these projections. <b>Skill PPG</b> weights this season 70%, last season 20% and two seasons back 10% (renormalized when a player missed a season). Each season's PPG is half actual points and half <a href="#xfp" data-goto="xfp">expected points (xFP)</a>, so touchdown luck and big-play variance count for less. <b>Signals</b> then move it by at most ±15%:
@@ -373,6 +394,7 @@ const CPOE = {{CPOE_DATA}};
 const RYOE = {{RYOE_DATA}};
 const RB_EFF = {{RB_EFF_DATA}};
 const DST = {{DST_DATA}};
+const CLU = {{CLUSTER_DATA}};
 const RANKS = {{RANKINGS_DATA}};
 const GAPS = {{GAPS_DATA}};
 </script>
@@ -1068,6 +1090,59 @@ $("rbMineOnly").onchange = () => { drawChart("rbChart"); renderRb(); };
   ], () => B.history, {});
 })();
 
+// ---------- defense clusters ----------
+(() => {
+  const CLU_VARS = ["--pos-wr", "--pos-qb", "--pos-te", "--pos-rb"];
+  const cvar = id => CLU_VARS[(id - 1) % CLU_VARS.length];
+  const FEAT = Object.fromEntries(CLU.features.map(f => [f.key, f]));
+  const fmtv = (key, v) => v == null ? '<span class="muted">—</span>'
+    : FEAT[key].fmt === "pct" ? (v * 100).toFixed(1) + "%" : FEAT[key].fmt === "epa" ? (v > 0 ? "+" : "") + v.toFixed(3) : v.toFixed(2);
+  const L = CLU.league;
+  $("cluTitle").textContent = `Defense Clusters — ${CLU.season}`;
+  // Loadings are signed so + = better for the defense on that stat.
+  const axis = i => CLU.pc_loadings[i].map(x => `${x.weight > 0 ? "better" : "worse"} ${x.feature}`).join(", ");
+  $("cluDesc").innerHTML = `All 32 defenses grouped into ${CLU.k} clusters of similar units with k-means, the method PFF uses. ` +
+    `PFF clusters on its own grades and coverage charting, which are paywalled; this uses what nflverse publishes for free: ` +
+    `play-by-play (EPA, success rate, first downs, 3rd-down conversions, sacks, QB hits as a pressure proxy, explosive plays, takeaways, run stuffs)` +
+    (CLU.ftn ? ` and FTN charting (blitz rate, pass rushers, men in the box)` : ``) + `. Each stat is standardized across teams ` +
+    `(capped at ±2 standard deviations so one extreme team can't take a cluster alone). Cluster 1 is the best group by EPA allowed. ` +
+    `The map shows the two directions that separate defenses most: across, <b>${(CLU.explained[0] * 100).toFixed(0)}%</b> of the variation ` +
+    `(${axis(0)}); up, <b>${(CLU.explained[1] * 100).toFixed(0)}%</b> (${axis(1)}). Groups overlap at the edges: treat them as styles, not hard tiers.`;
+  $("cluLegend").innerHTML = CLU.clusters.map(c => `<span class="dot" style="--c:var(${cvar(c.id)})">${c.id}. ${esc(c.name)}</span>`).join("");
+  scatter("cluChart", () => ({
+    x: "← worse defense · component 1 · better defense →", y: "less pressure · component 2 · more pressure",
+    data: {datasets: CLU.clusters.map(c => ({
+      label: c.name, backgroundColor: css(cvar(c.id)), pointRadius: 6,
+      data: CLU.teams.filter(t => t.cluster === c.id).map(t => ({x: t.pc1, y: t.pc2, name: `${t.team} (${(TEAMS[t.team] || {}).name || ""})`, short: t.team, label: true, c: c.id})),
+    }))},
+    tip: d => `${d.name} · cluster ${d.c}`,
+  }));
+  const STATS = ["epa_pp", "pass_epa_pp", "rush_epa_pp", "sack_rate", "hit_rate", "takeaway_rate", "third_down_rate", "blitz_rate"].filter(k => FEAT[k]);
+  $("cluCards").innerHTML = CLU.clusters.map(c => `<div class="clu-card" style="--c:var(${cvar(c.id)})">
+      <h4>Cluster ${c.id}: ${esc(c.name)}</h4>
+      <div class="teams">${c.teams.map(t => `<span title="${esc((TEAMS[t] || {}).name || t)}">${t}</span>`).join("")}</div>
+      <div class="muted" style="font-size:12px">Best at: ${c.strengths.map(esc).join(", ")}<br>Weakest at: ${c.weaknesses.map(esc).join(", ")}</div>
+      <dl>${STATS.map(k => `<dt>${esc(FEAT[k].label)}</dt><dd>${fmtv(k, c.avg[k])} <span class="muted">(lg ${fmtv(k, L[k])})</span></dd>`).join("")}
+        <dt>D/ST pts/G</dt><dd><b>${c.avg.dst_pg.toFixed(1)}</b> <span class="muted">(lg ${L.dst_pg.toFixed(1)})</span></dd></dl>
+    </div>`).join("");
+  let cluFilter = "All";
+  $("cluFilter").innerHTML = ["All", ...CLU.clusters.map(c => String(c.id))].map((v, i) => `<button data-v="${v}" class="${i ? "" : "on"}">${v === "All" ? "All" : "Cluster " + v}</button>`).join("");
+  const statCol = k => ({key: k, label: FEAT[k].label, fmt: (v, r) => `${rankCell(r[k + "_rank"])} <span class="muted">${fmtv(k, v)}</span>`,
+    title: FEAT[k].higher_better == null ? "Scheme tendency (rank 1 = highest)" : "Rank 1 = best for the defense" + (FEAT[k].extra ? "; small sample, not used for clustering" : "")});
+  const renderClu = makeTable($("cluTbl"), [
+    {key: "team", label: "Defense", l: 1, fmt: v => `<b>${esc(v)}</b> <span class="muted">${esc((TEAMS[v] || {}).name || "")}</span>`},
+    {key: "cluster", label: "Cluster", fmt: v => `<span class="clu-dot" style="--c:var(${cvar(v)})"></span>${v}`},
+    {key: "dst_pg", label: "D/ST pts/G", fmt: f(1)},
+    {key: "note", label: "Profile", l: 1, fmt: v => `<span style="display:inline-block;min-width:260px;white-space:normal">${esc(v)}</span>`},
+    ...CLU.features.map(x => statCol(x.key)),
+  ], () => CLU.teams.filter(t => cluFilter === "All" || String(t.cluster) === cluFilter), {sortKey: "epa_pp_rank", sortDir: 1});
+  $("cluFilter").onclick = e => {
+    const b = e.target.closest("button"); if (!b) return;
+    $("cluFilter").querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b));
+    cluFilter = b.dataset.v; renderClu();
+  };
+})();
+
 // ---------- 5.9 rankings ----------
 const TIERS = [[12, "Elite"], [24, "Locks"], [40, "Strong Starters"], [60, "Solid Starters"], [80, "Flex"],
                [100, "Streamers"], [130, "Bench Stash"], [160, "Deep Bench"], [200, "Waiver Watch"]];
@@ -1294,7 +1369,7 @@ const renderSos = makeTable($("sosTbl"), [
 onPos("sos", renderSos);
 
 // ---------- tabs ----------
-const TAB_IDS = ["lineup", "startsit", "sos", "plays", "separation", "defense", "slot", "xfp", "redzone", "skill", "rbeff", "dst", "rankings"];
+const TAB_IDS = ["lineup", "startsit", "sos", "plays", "separation", "defense", "slot", "xfp", "redzone", "skill", "rbeff", "dst", "clusters", "rankings"];
 const tabsBar = $("tabs");
 function showTab(id, opts = {}) {
   if (!TAB_IDS.includes(id)) id = TAB_IDS[0];
