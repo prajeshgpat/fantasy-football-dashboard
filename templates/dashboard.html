@@ -194,6 +194,7 @@ details.note[open] summary { margin-bottom: 4px; }
       <button data-tab="redzone" role="tab">Red Zone</button>
       <button data-tab="skill" role="tab">CPOE/RYOE</button>
       <button data-tab="rbeff" role="tab">RB YPC</button>
+      <button data-tab="dst" role="tab">D/ST</button>
       <button data-tab="rankings" role="tab">Top 200</button>
     </div>
   </div>
@@ -317,6 +318,15 @@ details.note[open] summary { margin-bottom: 4px; }
   <div class="tbl-wrap"><table id="rbTbl"></table></div>
 </section>
 
+<section id="dst" role="tabpanel" hidden>
+  <h2 id="dstTitle">Best D/ST Matchups</h2>
+  <p class="desc">Which fantasy defenses to start, by matchup, not just by how good the defense is. <b>Results</b>: D/ST points this defense scores per game plus what the opponent gives up to defenses per game, minus the league average. <b>EPA proj</b>: expected opponent EPA per play in this game, built from the opponent's pass and rush EPA and the defense's pass and rush EPA allowed, weighted by how often the opponent passes in neutral game script; converted to D/ST points with the fitted relationship between offensive EPA and D/ST points. <b>Proj</b> is half of each. This season's numbers are blended with last season's (counted as <span id="dstPrior"></span> games). EPA comes from nflverse play-by-play, the same source as nfelo's EPA tiers. D/ST points use ESPN standard scoring (sacks, takeaways, TDs, safeties, blocks, points and yards allowed).</p>
+  <div class="note" id="dstNote"></div>
+  <div class="controls"><button data-reset="dstChart">Reset zoom</button></div>
+  <div class="chart-wrap"><canvas id="dstChart" aria-label="Scatter of expected opponent EPA per play vs projected D/ST points"></canvas></div>
+  <div class="tbl-wrap"><table id="dstTbl"></table></div>
+</section>
+
 <section id="rankings" role="tabpanel" hidden>
   <h2>Top 200 Tiered Rankings</h2>
   <p class="desc">Every other tab feeds these projections. <b>Skill PPG</b> weights this season 70%, last season 20% and two seasons back 10% (renormalized when a player missed a season). Each season's PPG is half actual points and half <a href="#xfp" data-goto="xfp">expected points (xFP)</a>, so touchdown luck and big-play variance count for less. <b>Signals</b> then move it by at most ±15%:
@@ -354,6 +364,7 @@ const RZ = {{REDZONE_DATA}};
 const CPOE = {{CPOE_DATA}};
 const RYOE = {{RYOE_DATA}};
 const RB_EFF = {{RB_EFF_DATA}};
+const DST = {{DST_DATA}};
 const RANKS = {{RANKINGS_DATA}};
 const GAPS = {{GAPS_DATA}};
 </script>
@@ -402,6 +413,8 @@ $("meta").textContent = `${META.season} season · data through week ${META.throu
 })();
 
 // Diverging chip for a 1..32 defensive rank (1 = stingy/blue, 32 = generous/red).
+// Offense rank (1 = best offense): colored from the defense's side, so a weak offense reads blue.
+const rankCellOff = r => r == null ? rankCell(r) : rankCell(33 - r).replace(/>\d+</, `>${r}<`);
 function rankCell(r) {
   if (r == null) return '<span class="muted">—</span>';
   const t = (r - 16.5) / 15.5; // -1..1
@@ -946,6 +959,55 @@ $("rbSeason").onclick = e => {
 };
 $("rbMineOnly").onchange = () => { drawChart("rbChart"); renderRb(); };
 
+// ---------- D/ST matchups ----------
+(() => {
+  const L = DST.league;
+  $("dstTitle").textContent = `Best D/ST Matchups${DST.week ? " — Week " + DST.week : ""}`;
+  $("dstPrior").textContent = DST.prior_games;
+  $("dstNote").innerHTML = `League average: ${L.dst_pg.toFixed(1)} D/ST pts/G · neutral pass rate ${(L.pass_rate * 100).toFixed(0)}% · ` +
+    `${DST.slope.toFixed(1)} D/ST pts per +1.0 offensive EPA/play. The pass/run <b>Fit</b> column isolates your tendency idea ` +
+    `(opponent leans pass and the defense is strong against the pass, or the reverse). It is real but small, usually under half a point, ` +
+    `because teams' pass rates differ from the league by only a few points. Opponent quality matters far more. Teams on bye are left out.`;
+  const epa = v => v == null ? '<span class="muted">—</span>' : (v > 0 ? "+" : "") + v.toFixed(3);
+  const fitChip = r => {
+    const dev = r.opp_pass_rate - L.pass_rate;
+    if (Math.abs(dev) < 0.02) return "";
+    const pass = dev > 0, rk = pass ? r.def_pass_rank : r.def_rush_rank;
+    const what = `${pass ? "Pass" : "Run"}-heavy opp vs #${rk} ${pass ? "pass" : "run"} D`;
+    if (rk <= 10) return `<span class="chip good" title="${esc(what)}">${esc(what)}</span>`;
+    if (rk >= 23) return `<span class="chip bad" title="${esc(what)}">${esc(what)}</span>`;
+    return "";
+  };
+  scatter("dstChart", () => {
+    const pts = DST.rows.map(r => ({x: r.matchup_epa, y: r.proj, name: `${r.defense} vs ${r.opp}`, short: r.defense, label: r.rank <= 8}));
+    return {
+      x: "Expected opponent EPA/play (left = better for the defense)", y: "Projected D/ST points",
+      ref: {x: L.epa, y: L.dst_pg, xLabel: "league EPA", yLabel: `league ${L.dst_pg.toFixed(1)} pts`},
+      data: {datasets: [{label: "D/ST", data: pts, backgroundColor: css("--accent")}]},
+      tip: d => `${d.name} · proj ${d.y.toFixed(1)} · opp EPA/play ${d.x >= 0 ? "+" : ""}${d.x.toFixed(3)}`,
+    };
+  });
+  makeTable($("dstTbl"), [
+    {key: "rank", label: "#"},
+    {key: "defense", label: "Defense", l: 1, fmt: v => `<b>${esc(v)}</b> <span class="muted">${esc((TEAMS[v] || {}).name || "")}</span>`},
+    {key: "opp", label: "Opp", fmt: (v, r) => (r.home ? "vs " : "@ ") + esc(v)},
+    {key: "proj", label: "Proj", fmt: v => `<b>${v.toFixed(1)}</b>`, title: "Half results, half EPA projection"},
+    {key: "results", label: "Results", fmt: f(1), title: "Defense D/ST pts/G + opponent D/ST pts allowed/G − league average"},
+    {key: "epa_proj", label: "EPA proj", fmt: f(1), title: "D/ST points implied by the expected opponent EPA/play"},
+    {key: "matchup_epa", label: "Opp EPA/play", fmt: epa, title: "Expected opponent EPA/play in this game, pass and run weighted by the opponent's pass rate (lower is better for the defense)"},
+    {key: "opp_pass_rate", label: "Opp pass %", fmt: v => (v * 100).toFixed(0) + "%", title: "Opponent's dropback rate in neutral game script (win probability 20–80%)"},
+    {key: "def_pass_rank", label: "D pass", fmt: (v, r) => `${rankCell(v)} <span class="muted">${epa(r.def_pass_epa)}</span>`, title: "Defense's pass EPA/play allowed and its rank (1 = best)"},
+    {key: "def_rush_rank", label: "D run", fmt: (v, r) => `${rankCell(v)} <span class="muted">${epa(r.def_rush_epa)}</span>`, title: "Defense's rush EPA/play allowed and its rank (1 = best)"},
+    {key: "opp_pass_rank", label: "Opp pass O", fmt: (v, r) => `${rankCellOff(v)} <span class="muted">${epa(r.opp_pass_epa)}</span>`, title: "Opponent's pass EPA/play and rank (1 = best offense; blue = weak offense, good for the defense)"},
+    {key: "opp_rush_rank", label: "Opp run O", fmt: (v, r) => `${rankCellOff(v)} <span class="muted">${epa(r.opp_rush_epa)}</span>`, title: "Opponent's rush EPA/play and rank (1 = best offense; blue = weak offense, good for the defense)"},
+    {key: "def_dst_pg", label: "D pts/G", fmt: f(1), title: "D/ST points this defense scores per game"},
+    {key: "opp_dst_allowed_pg", label: "Opp allows/G", fmt: f(1), title: "D/ST points this opponent gives up per game"},
+    {key: "sack_edge", label: "Sack %", fmt: v => (v * 100).toFixed(1) + "%", title: "Average of the defense's sack rate and the opponent's sack rate allowed"},
+    {key: "takeaway_edge", label: "TO/G", fmt: f(2), title: "Average of the defense's takeaways/G and the opponent's giveaways/G"},
+    {key: "fit", label: "Fit", fmt: (v, r) => `${signed(2)(v)} ${fitChip(r)}`, title: "D/ST points from the opponent's pass/run lean meeting the defense's pass/run strength"},
+  ], () => DST.rows, {sortKey: "rank", sortDir: 1});
+})();
+
 // ---------- 5.9 rankings ----------
 const TIERS = [[12, "Elite"], [24, "Locks"], [40, "Strong Starters"], [60, "Solid Starters"], [80, "Flex"],
                [100, "Streamers"], [130, "Bench Stash"], [160, "Deep Bench"], [200, "Waiver Watch"]];
@@ -1172,7 +1234,7 @@ const renderSos = makeTable($("sosTbl"), [
 onPos("sos", renderSos);
 
 // ---------- tabs ----------
-const TAB_IDS = ["lineup", "startsit", "sos", "plays", "separation", "defense", "slot", "xfp", "redzone", "skill", "rbeff", "rankings"];
+const TAB_IDS = ["lineup", "startsit", "sos", "plays", "separation", "defense", "slot", "xfp", "redzone", "skill", "rbeff", "dst", "rankings"];
 const tabsBar = $("tabs");
 function showTab(id, opts = {}) {
   if (!TAB_IDS.includes(id)) id = TAB_IDS[0];

@@ -36,6 +36,14 @@ MY_ROSTER = [
     "Jordan Mason",
 ]
 
+# D/ST scoring (ESPN standard). Tiers are (upper bound inclusive, points), ascending.
+DST_SCORING = {
+    "sack": 1, "int": 2, "fumble_rec": 2, "td": 6, "safety": 2, "block": 2,
+    "points_allowed": [(0, 5), (6, 4), (13, 3), (17, 1), (27, 0), (34, -1), (45, -3), (float("inf"), -5)],
+    "yards_allowed": [(99, 5), (199, 3), (299, 2), (349, 0), (399, -1), (449, -3), (499, -5), (549, -6),
+                      (float("inf"), -7)],
+}
+
 # Fantasy playoff weeks, highlighted in strength of schedule.
 FANTASY_PLAYOFF_WEEKS = [15, 16, 17]
 

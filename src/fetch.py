@@ -28,6 +28,9 @@ PBP_COLUMNS = [
     "pass_touchdown", "rush_touchdown", "interception",
     "fumble_lost", "fumbled_1_player_id", "wp",
     "qtr", "drive", "game_seconds_remaining", "score_differential",
+    # D/ST matchups: EPA splits and the defensive scoring events
+    "epa", "pass", "rush", "yards_gained", "touchdown", "td_team", "return_touchdown", "safety",
+    "punt_blocked", "field_goal_result", "extra_point_result",
 ]
 
 

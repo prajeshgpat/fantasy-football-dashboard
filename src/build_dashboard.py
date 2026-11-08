@@ -16,7 +16,7 @@ from pathlib import Path
 import pandas as pd
 
 import config
-from src import (defense, expected_points, fetch, pace, rankings, rb_efficiency, redzone, schedule, scoring, signals,
+from src import (defense, dst, expected_points, fetch, pace, rankings, rb_efficiency, redzone, schedule, scoring, signals,
                  separation, skill_metrics, slot_perimeter)
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -218,6 +218,7 @@ def compute() -> dict[str, object]:
         "CPOE_DATA": skill_metrics.to_json(cp),
         "RYOE_DATA": skill_metrics.to_json(ry),
         "RB_EFF_DATA": rb_efficiency.to_json(),
+        "DST_DATA": dst.matchups(),
         "RANKINGS_DATA": rankings.to_json(ranks),
         "GAPS_DATA": rankings.gaps_to_json(gaps),
     }
