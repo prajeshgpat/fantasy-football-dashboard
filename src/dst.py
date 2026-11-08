@@ -13,7 +13,12 @@ how they fit: a pass-heavy offense matters most against a defense that is good
   EPA proj   league D/ST points + slope x (matchup EPA - league EPA), where
              slope is D/ST points per EPA/play, fitted on every team-game this
              season and last
-  proj       half results, half EPA proj
+  yards      expected yards allowed in this game: the opponent's passing
+  proj       yards/G and the defense's passing yards allowed/G (each vs.
+             league), plus the same for rushing; scored with the D/ST
+             yards-allowed tiers (smoothed over game-to-game spread) and
+             centered on the league average D/ST points
+  proj       the average of results, EPA proj and yards proj (WEIGHTS)
   fit        the part of matchup EPA that comes from tendency meeting strength:
              (opponent pass rate - league) x (defense pass EPA - rush EPA),
              shown in D/ST points
@@ -31,7 +36,7 @@ from src import fetch, rankings
 
 NEUTRAL_WP = (0.20, 0.80)
 PRIOR_GAMES = 4            # last season's rates count as this many games
-PROJ_EPA_WEIGHT = 0.5      # projection = (1 - w) x fantasy results + w x EPA projection
+WEIGHTS = {"results": 1 / 3, "epa": 1 / 3, "yards": 1 / 3}   # projection blend
 
 
 def _tier(value: float, tiers: list[tuple[float, float]]) -> float:
@@ -66,6 +71,7 @@ def team_games(year: int) -> pd.DataFrame:
             blocks = (off["punt_blocked"].fillna(0).sum() + (off["field_goal_result"] == "blocked").sum()
                       + (off["extra_point_result"] == "blocked").sum())
             yards = off.loc[off["play_type"].isin(["pass", "run"]), "yards_gained"].fillna(0).sum()
+            pass_yds = off.loc[off["play_type"].isin(["pass", "run"]) & (off["pass"] == 1), "yards_gained"].fillna(0).sum()
             fp = (sacks * sc["sack"] + ints * sc["int"] + fum * sc["fumble_rec"] + tds * sc["td"]
                   + safeties * sc["safety"] + blocks * sc["block"]
                   + _tier(pts_allowed, sc["points_allowed"]) + _tier(yards, sc["yards_allowed"]))
@@ -75,6 +81,7 @@ def team_games(year: int) -> pd.DataFrame:
                 "pts_allowed": pts_allowed, "yds_allowed": yards,
                 "plays": len(scrim), "dropbacks": len(dropbacks), "rushes": len(rushes),
                 "pass_epa": dropbacks["epa"].sum(), "rush_epa": rushes["epa"].sum(),
+                "pass_yds": pass_yds, "rush_yds": yards - pass_yds,
                 "epa": scrim["epa"].sum(),
             })
     return pd.DataFrame(rows)
@@ -93,10 +100,12 @@ def _profiles(tg: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         a = tg.groupby(by).agg(games=("game_id", "nunique"), dst_fp=("dst_fp", "sum"),
                                sacks=("sacks", "sum"), takeaways=("takeaways", "sum"),
                                dropbacks=("dropbacks", "sum"), rushes=("rushes", "sum"),
-                               pass_epa=("pass_epa", "sum"), rush_epa=("rush_epa", "sum"))
+                               pass_epa=("pass_epa", "sum"), rush_epa=("rush_epa", "sum"),
+                               pass_yds=("pass_yds", "sum"), rush_yds=("rush_yds", "sum"))
         return a.assign(dst_pg=a["dst_fp"] / a["games"], sack_rate=a["sacks"] / a["dropbacks"],
                         takeaways_pg=a["takeaways"] / a["games"],
-                        pass_epa_pp=a["pass_epa"] / a["dropbacks"], rush_epa_pp=a["rush_epa"] / a["rushes"])
+                        pass_epa_pp=a["pass_epa"] / a["dropbacks"], rush_epa_pp=a["rush_epa"] / a["rushes"],
+                        pass_ypg=a["pass_yds"] / a["games"], rush_ypg=a["rush_yds"] / a["games"])
     return agg("defense"), agg("offense")
 
 
@@ -110,6 +119,24 @@ def _blend(cur: pd.DataFrame, prior: pd.DataFrame, cols: list[str]) -> pd.DataFr
     return out
 
 
+def yards_sd(tg: pd.DataFrame) -> float:
+    """Game-to-game spread of yards allowed around the additive offense + defense expectation."""
+    parts = []
+    for _, g in tg.groupby("season"):
+        lg = g["yds_allowed"].mean()
+        exp = g["offense"].map(g.groupby("offense")["yds_allowed"].mean()) \
+            + g["defense"].map(g.groupby("defense")["yds_allowed"].mean()) - lg
+        parts.append(g["yds_allowed"] - exp)
+    return float(pd.concat(parts).std())
+
+
+def expected_tier(mu: float, sd: float, tiers: list[tuple[float, float]]) -> float:
+    """Expected tier points when the stat is roughly Normal(mu, sd)."""
+    z = np.linspace(-3, 3, 61)
+    w = np.exp(-z ** 2 / 2)
+    return float(np.average([_tier(mu + sd * zi, tiers) for zi in z], weights=w))
+
+
 def epa_slope(tg: pd.DataFrame) -> float:
     """D/ST points per 1.0 of offensive EPA/play in that game (least squares, negative)."""
     x = tg["epa"] / tg["plays"]
@@ -120,9 +147,11 @@ def epa_slope(tg: pd.DataFrame) -> float:
 def matchups() -> dict:
     cur_y, pri_y = config.SEASON, config.PRIOR_SEASON
     tg_cur, tg_pri = team_games(cur_y), team_games(pri_y)
-    slope = epa_slope(pd.concat([tg_cur, tg_pri]))
+    both = pd.concat([tg_cur, tg_pri])
+    slope, sd = epa_slope(both), yards_sd(both)
+    ya_tiers = config.DST_SCORING["yards_allowed"]
 
-    cols = ["dst_pg", "sack_rate", "takeaways_pg", "pass_epa_pp", "rush_epa_pp"]
+    cols = ["dst_pg", "sack_rate", "takeaways_pg", "pass_epa_pp", "rush_epa_pp", "pass_ypg", "rush_ypg"]
     d_cur, o_cur = _profiles(tg_cur)
     d_pri, o_pri = _profiles(tg_pri)
     D, O = _blend(d_cur, d_pri, cols), _blend(o_cur, o_pri, cols)
@@ -138,6 +167,11 @@ def matchups() -> dict:
     D["rush_rank"] = D["rush_epa_pp"].rank(method="min").astype(int)
     O["pass_rank"] = O["pass_epa_pp"].rank(ascending=False, method="min").astype(int)   # 1 = best offense
     O["rush_rank"] = O["rush_epa_pp"].rank(ascending=False, method="min").astype(int)
+    for k in ("pass", "rush"):   # yards: 1 = fewest allowed (defense) / most gained (offense)
+        D[f"{k}_yds_rank"] = D[f"{k}_ypg"].rank(method="min").astype(int)
+        O[f"{k}_yds_rank"] = O[f"{k}_ypg"].rank(ascending=False, method="min").astype(int)
+    lg_yds = lg["pass_ypg"] + lg["rush_ypg"]
+    lg_ya_pts = expected_tier(lg_yds, sd, ya_tiers)
 
     opp = rankings.next_opponents(cur_y)
     week = int(opp["week"].min()) if len(opp) else None
@@ -153,11 +187,20 @@ def matchups() -> dict:
         exp_rush = o["rush_epa_pp"] + d["rush_epa_pp"] - lg["rush_epa_pp"]
         matchup_epa = o["pass_rate"] * exp_pass + (1 - o["pass_rate"]) * exp_rush
         epa_proj = lg["dst_pg"] + slope * (matchup_epa - lg_epa)
-        fit = PROJ_EPA_WEIGHT * slope * (o["pass_rate"] - lg_pr) * (d["pass_epa_pp"] - d["rush_epa_pp"])
+        fit = WEIGHTS["epa"] * slope * (o["pass_rate"] - lg_pr) * (d["pass_epa_pp"] - d["rush_epa_pp"])
+        exp_pass_yds = o["pass_ypg"] + d["pass_ypg"] - lg["pass_ypg"]
+        exp_rush_yds = o["rush_ypg"] + d["rush_ypg"] - lg["rush_ypg"]
+        exp_yds = exp_pass_yds + exp_rush_yds
+        yards_proj = lg["dst_pg"] + expected_tier(exp_yds, sd, ya_tiers) - lg_ya_pts
         rows.append({
             "defense": dfn, "opp": ofn, "home": bool(r.home), "week": int(r.week),
-            "proj": (1 - PROJ_EPA_WEIGHT) * results + PROJ_EPA_WEIGHT * epa_proj,
-            "results": results, "epa_proj": epa_proj, "fit": fit, "matchup_epa": matchup_epa,
+            "proj": WEIGHTS["results"] * results + WEIGHTS["epa"] * epa_proj + WEIGHTS["yards"] * yards_proj,
+            "results": results, "epa_proj": epa_proj, "yards_proj": yards_proj, "fit": fit, "matchup_epa": matchup_epa,
+            "exp_pass_yds": exp_pass_yds, "exp_rush_yds": exp_rush_yds, "exp_yds": exp_yds,
+            "def_pass_ypg": d["pass_ypg"], "def_pass_yds_rank": int(d["pass_yds_rank"]),
+            "def_rush_ypg": d["rush_ypg"], "def_rush_yds_rank": int(d["rush_yds_rank"]),
+            "opp_pass_ypg": o["pass_ypg"], "opp_pass_yds_rank": int(o["pass_yds_rank"]),
+            "opp_rush_ypg": o["rush_ypg"], "opp_rush_yds_rank": int(o["rush_yds_rank"]),
             "def_dst_pg": d["dst_pg"], "opp_dst_allowed_pg": o["dst_pg"],
             "opp_pass_rate": o["pass_rate"],
             "def_pass_epa": d["pass_epa_pp"], "def_pass_rank": int(d["pass_rank"]),
@@ -173,10 +216,12 @@ def matchups() -> dict:
     return {
         "week": week,
         "slope": round(slope, 1),
-        "epa_weight": PROJ_EPA_WEIGHT,
+        "weights": WEIGHTS,
+        "yards_sd": round(sd, 1),
         "league": {"dst_pg": round(lg["dst_pg"], 2), "pass_rate": round(lg_pr, 3),
                    "pass_epa": round(lg["pass_epa_pp"], 3), "rush_epa": round(lg["rush_epa_pp"], 3),
                    "epa": round(lg_epa, 3),
+                   "pass_ypg": round(lg["pass_ypg"], 1), "rush_ypg": round(lg["rush_ypg"], 1),
                    "sack_rate": round(lg["sack_rate"], 3), "takeaways_pg": round(lg["takeaways_pg"], 2)},
         "prior_games": PRIOR_GAMES,
         "rows": out.astype(object).where(out.notna(), None).to_dict("records"),

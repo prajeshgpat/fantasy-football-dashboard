@@ -320,7 +320,7 @@ details.note[open] summary { margin-bottom: 4px; }
 
 <section id="dst" role="tabpanel" hidden>
   <h2 id="dstTitle">Best D/ST Matchups</h2>
-  <p class="desc">Which fantasy defenses to start, by matchup, not just by how good the defense is. <b>Results</b>: D/ST points this defense scores per game plus what the opponent gives up to defenses per game, minus the league average. <b>EPA proj</b>: expected opponent EPA per play in this game, built from the opponent's pass and rush EPA and the defense's pass and rush EPA allowed, weighted by how often the opponent passes in neutral game script; converted to D/ST points with the fitted relationship between offensive EPA and D/ST points. <b>Proj</b> is half of each. This season's numbers are blended with last season's (counted as <span id="dstPrior"></span> games). EPA comes from nflverse play-by-play, the same source as nfelo's EPA tiers. D/ST points use ESPN standard scoring (sacks, takeaways, TDs, safeties, blocks, points and yards allowed).</p>
+  <p class="desc">Which fantasy defenses to start, by matchup, not just by how good the defense is. <b>Results</b>: D/ST points this defense scores per game plus what the opponent gives up to defenses per game, minus the league average. <b>EPA proj</b>: expected opponent EPA per play in this game, built from the opponent's pass and rush EPA and the defense's pass and rush EPA allowed, weighted by how often the opponent passes in neutral game script; converted to D/ST points with the fitted relationship between offensive EPA and D/ST points. <b>Yards proj</b>: expected yards allowed, from the opponent's passing yards per game and the defense's passing yards allowed per game (each against the league average), plus the same for rushing, scored with the D/ST yards-allowed tiers. <b>Proj</b> is the average of the three. This season's numbers are blended with last season's (counted as <span id="dstPrior"></span> games). EPA comes from nflverse play-by-play, the same source as nfelo's EPA tiers. D/ST points use ESPN standard scoring (sacks, takeaways, TDs, safeties, blocks, points and yards allowed).</p>
   <div class="note" id="dstNote"></div>
   <div class="controls"><button data-reset="dstChart">Reset zoom</button></div>
   <div class="chart-wrap"><canvas id="dstChart" aria-label="Scatter of expected opponent EPA per play vs projected D/ST points"></canvas></div>
@@ -964,7 +964,7 @@ $("rbMineOnly").onchange = () => { drawChart("rbChart"); renderRb(); };
   const L = DST.league;
   $("dstTitle").textContent = `Best D/ST Matchups${DST.week ? " — Week " + DST.week : ""}`;
   $("dstPrior").textContent = DST.prior_games;
-  $("dstNote").innerHTML = `League average: ${L.dst_pg.toFixed(1)} D/ST pts/G · neutral pass rate ${(L.pass_rate * 100).toFixed(0)}% · ` +
+  $("dstNote").innerHTML = `League average: ${L.dst_pg.toFixed(1)} D/ST pts/G · ${L.pass_ypg.toFixed(0)} pass + ${L.rush_ypg.toFixed(0)} rush yds/G · neutral pass rate ${(L.pass_rate * 100).toFixed(0)}% · ` +
     `${DST.slope.toFixed(1)} D/ST pts per +1.0 offensive EPA/play. The pass/run <b>Fit</b> column isolates your tendency idea ` +
     `(opponent leans pass and the defense is strong against the pass, or the reverse). It is real but small, usually under half a point, ` +
     `because teams' pass rates differ from the league by only a few points. Opponent quality matters far more. Teams on bye are left out.`;
@@ -991,15 +991,22 @@ $("rbMineOnly").onchange = () => { drawChart("rbChart"); renderRb(); };
     {key: "rank", label: "#"},
     {key: "defense", label: "Defense", l: 1, fmt: v => `<b>${esc(v)}</b> <span class="muted">${esc((TEAMS[v] || {}).name || "")}</span>`},
     {key: "opp", label: "Opp", fmt: (v, r) => (r.home ? "vs " : "@ ") + esc(v)},
-    {key: "proj", label: "Proj", fmt: v => `<b>${v.toFixed(1)}</b>`, title: "Half results, half EPA projection"},
+    {key: "proj", label: "Proj", fmt: v => `<b>${v.toFixed(1)}</b>`, title: "Average of results, EPA projection and yards projection"},
     {key: "results", label: "Results", fmt: f(1), title: "Defense D/ST pts/G + opponent D/ST pts allowed/G − league average"},
     {key: "epa_proj", label: "EPA proj", fmt: f(1), title: "D/ST points implied by the expected opponent EPA/play"},
+    {key: "yards_proj", label: "Yards proj", fmt: f(1), title: "D/ST points implied by the expected yards allowed (yards-allowed tiers), centered on the league average"},
+    {key: "exp_yds", label: "Exp yds", fmt: (v, r) => `${v.toFixed(0)} <span class="muted">${r.exp_pass_yds.toFixed(0)}/${r.exp_rush_yds.toFixed(0)}</span>`,
+     title: "Expected yards allowed in this game (pass/rush): opponent yards/G + defense yards allowed/G − league average"},
     {key: "matchup_epa", label: "Opp EPA/play", fmt: epa, title: "Expected opponent EPA/play in this game, pass and run weighted by the opponent's pass rate (lower is better for the defense)"},
     {key: "opp_pass_rate", label: "Opp pass %", fmt: v => (v * 100).toFixed(0) + "%", title: "Opponent's dropback rate in neutral game script (win probability 20–80%)"},
     {key: "def_pass_rank", label: "D pass", fmt: (v, r) => `${rankCell(v)} <span class="muted">${epa(r.def_pass_epa)}</span>`, title: "Defense's pass EPA/play allowed and its rank (1 = best)"},
     {key: "def_rush_rank", label: "D run", fmt: (v, r) => `${rankCell(v)} <span class="muted">${epa(r.def_rush_epa)}</span>`, title: "Defense's rush EPA/play allowed and its rank (1 = best)"},
+    {key: "def_pass_yds_rank", label: "D pass yds", fmt: (v, r) => `${rankCell(v)} <span class="muted">${r.def_pass_ypg.toFixed(0)}</span>`, title: "Passing yards allowed per game and rank (1 = fewest)"},
+    {key: "def_rush_yds_rank", label: "D run yds", fmt: (v, r) => `${rankCell(v)} <span class="muted">${r.def_rush_ypg.toFixed(0)}</span>`, title: "Rushing yards allowed per game and rank (1 = fewest)"},
     {key: "opp_pass_rank", label: "Opp pass O", fmt: (v, r) => `${rankCellOff(v)} <span class="muted">${epa(r.opp_pass_epa)}</span>`, title: "Opponent's pass EPA/play and rank (1 = best offense; blue = weak offense, good for the defense)"},
     {key: "opp_rush_rank", label: "Opp run O", fmt: (v, r) => `${rankCellOff(v)} <span class="muted">${epa(r.opp_rush_epa)}</span>`, title: "Opponent's rush EPA/play and rank (1 = best offense; blue = weak offense, good for the defense)"},
+    {key: "opp_pass_yds_rank", label: "Opp pass yds", fmt: (v, r) => `${rankCellOff(v)} <span class="muted">${r.opp_pass_ypg.toFixed(0)}</span>`, title: "Opponent's passing yards per game and rank (1 = most; blue = low-yardage offense)"},
+    {key: "opp_rush_yds_rank", label: "Opp run yds", fmt: (v, r) => `${rankCellOff(v)} <span class="muted">${r.opp_rush_ypg.toFixed(0)}</span>`, title: "Opponent's rushing yards per game and rank (1 = most; blue = low-yardage offense)"},
     {key: "def_dst_pg", label: "D pts/G", fmt: f(1), title: "D/ST points this defense scores per game"},
     {key: "opp_dst_allowed_pg", label: "Opp allows/G", fmt: f(1), title: "D/ST points this opponent gives up per game"},
     {key: "sack_edge", label: "Sack %", fmt: v => (v * 100).toFixed(1) + "%", title: "Average of the defense's sack rate and the opponent's sack rate allowed"},
