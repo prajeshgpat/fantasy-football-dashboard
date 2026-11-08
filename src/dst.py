@@ -32,7 +32,7 @@ import numpy as np
 import pandas as pd
 
 import config
-from src import fetch, rankings
+from src import dst_boom, fetch, rankings
 
 NEUTRAL_WP = (0.20, 0.80)
 PRIOR_GAMES = 4            # last season's rates count as this many games
@@ -147,6 +147,7 @@ def epa_slope(tg: pd.DataFrame) -> float:
 def matchups() -> dict:
     cur_y, pri_y = config.SEASON, config.PRIOR_SEASON
     tg_cur, tg_pri = team_games(cur_y), team_games(pri_y)
+    tg_all = pd.concat([tg_cur, tg_pri] + [team_games(y) for y in range(dst_boom.TRAIN_FROM - 1, pri_y)])
     both = pd.concat([tg_cur, tg_pri])
     slope, sd = epa_slope(both), yards_sd(both)
     ya_tiers = config.DST_SCORING["yards_allowed"]
@@ -176,7 +177,8 @@ def matchups() -> dict:
     opp = rankings.next_opponents(cur_y)
     week = int(opp["week"].min()) if len(opp) else None
     rows = []
-    for r in opp[~opp["bye"].astype(bool)].itertuples():
+    # Only this week's unplayed games (teams that already played this week show their next game in `opp`).
+    for r in opp[~opp["bye"].astype(bool) & (opp["week"] == week)].itertuples():
         dfn, ofn = r.team, r.opp
         if dfn not in D.index or ofn not in O.index:
             continue
@@ -212,6 +214,15 @@ def matchups() -> dict:
         })
     df = pd.DataFrame(rows).sort_values("proj", ascending=False).reset_index(drop=True)
     df["rank"] = df.index + 1
+
+    sched = fetch.load_schedule()
+    sched = sched[(sched["season"] == cur_y) & (sched["week"] == week) & (sched["game_type"] == "REG")]
+    gid = {**{(h, a): g for g, h, a in zip(sched["game_id"], sched["home_team"], sched["away_team"])},
+           **{(a, h): g for g, h, a in zip(sched["game_id"], sched["home_team"], sched["away_team"])}}
+    up = df[["defense", "opp", "home"]].rename(columns={"opp": "offense"}).assign(
+        season=cur_y, week=week, game_id=[gid[(d, o)] for d, o in zip(df["defense"], df["opp"])])
+    bm = dst_boom.boom(tg_all, up)
+    df = df.merge(bm["upcoming"].rename(columns={"offense": "opp"}), on=["defense", "opp"], how="left")
     out = df.round(4)
     return {
         "week": week,
@@ -224,5 +235,7 @@ def matchups() -> dict:
                    "pass_ypg": round(lg["pass_ypg"], 1), "rush_ypg": round(lg["rush_ypg"], 1),
                    "sack_rate": round(lg["sack_rate"], 3), "takeaways_pg": round(lg["takeaways_pg"], 2)},
         "prior_games": PRIOR_GAMES,
-        "rows": out.astype(object).where(out.notna(), None).to_dict("records"),
+        "rows": out.drop(columns="flags").astype(object).where(out.drop(columns="flags").notna(), None)
+                  .assign(flags=df["flags"]).to_dict("records"),
+        "boom": {k: v for k, v in bm.items() if k != "upcoming"},
     }

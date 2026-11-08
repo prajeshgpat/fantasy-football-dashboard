@@ -325,6 +325,14 @@ details.note[open] summary { margin-bottom: 4px; }
   <div class="controls"><button data-reset="dstChart">Reset zoom</button></div>
   <div class="chart-wrap"><canvas id="dstChart" aria-label="Scatter of expected opponent EPA per play vs projected D/ST points"></canvas></div>
   <div class="tbl-wrap"><table id="dstTbl"></table></div>
+  <h3>What sets up a big D/ST game</h3>
+  <p class="desc" id="boomDesc"></p>
+  <div class="grid2">
+    <div><div class="tbl-wrap"><table id="boomBuckets"></table></div></div>
+    <div><div class="note" id="boomNote"></div></div>
+  </div>
+  <h3 id="boomHistTitle">Every 20+ point D/ST game</h3>
+  <div class="tbl-wrap" style="max-height:480px"><table id="boomHist"></table></div>
 </section>
 
 <section id="rankings" role="tabpanel" hidden>
@@ -961,7 +969,8 @@ $("rbMineOnly").onchange = () => { drawChart("rbChart"); renderRb(); };
 
 // ---------- D/ST matchups ----------
 (() => {
-  const L = DST.league;
+  const L = DST.league, B = DST.boom;
+  const pct = v => (v * 100).toFixed(v < 0.1 ? 1 : 0) + "%";
   $("dstTitle").textContent = `Best D/ST Matchups${DST.week ? " — Week " + DST.week : ""}`;
   $("dstPrior").textContent = DST.prior_games;
   $("dstNote").innerHTML = `League average: ${L.dst_pg.toFixed(1)} D/ST pts/G · ${L.pass_ypg.toFixed(0)} pass + ${L.rush_ypg.toFixed(0)} rush yds/G · neutral pass rate ${(L.pass_rate * 100).toFixed(0)}% · ` +
@@ -992,6 +1001,14 @@ $("rbMineOnly").onchange = () => { drawChart("rbChart"); renderRb(); };
     {key: "defense", label: "Defense", l: 1, fmt: v => `<b>${esc(v)}</b> <span class="muted">${esc((TEAMS[v] || {}).name || "")}</span>`},
     {key: "opp", label: "Opp", fmt: (v, r) => (r.home ? "vs " : "@ ") + esc(v)},
     {key: "proj", label: "Proj", fmt: v => `<b>${v.toFixed(1)}</b>`, title: "Average of results, EPA projection and yards projection"},
+    {key: "boom_pct", label: `Boom ${B.summary.boom}+`, fmt: v => v == null ? '<span class="muted">no line</span>' : `<b>${pct(v)}</b>`,
+     title: `Chance of ${B.summary.boom}+ D/ST points, from the opponent's implied points (base rate ${pct(B.summary.base_boom)})`},
+    {key: "smash_pct", label: `${B.summary.smash}+`, fmt: v => v == null ? "" : pct(v),
+     title: `Chance of ${B.summary.smash}+ D/ST points (base rate ${pct(B.summary.base_smash)})`},
+    {key: "opp_implied", label: "Opp implied", fmt: v => v == null ? '<span class="muted">—</span>' : v.toFixed(1),
+     title: "Opponent's implied points from the betting line (total ÷ 2 ± spread ÷ 2): the strongest single boom signal"},
+    {key: "flags", label: "Boom signs", l: 1, fmt: v => (v || []).map(t => `<span class="chip warn">${esc(t)}</span>`).join(""),
+     title: "Backup/new opposing QB, turnover-prone or sack-prone opponent (already reflected in the line, shown as the why)"},
     {key: "results", label: "Results", fmt: f(1), title: "Defense D/ST pts/G + opponent D/ST pts allowed/G − league average"},
     {key: "epa_proj", label: "EPA proj", fmt: f(1), title: "D/ST points implied by the expected opponent EPA/play"},
     {key: "yards_proj", label: "Yards proj", fmt: f(1), title: "D/ST points implied by the expected yards allowed (yards-allowed tiers), centered on the league average"},
@@ -1013,6 +1030,34 @@ $("rbMineOnly").onchange = () => { drawChart("rbChart"); renderRb(); };
     {key: "takeaway_edge", label: "TO/G", fmt: f(2), title: "Average of the defense's takeaways/G and the opponent's giveaways/G"},
     {key: "fit", label: "Fit", fmt: (v, r) => `${signed(2)(v)} ${fitChip(r)}`, title: "D/ST points from the opponent's pass/run lean meeting the defense's pass/run strength"},
   ], () => DST.rows, {sortKey: "rank", sortDir: 1});
+
+  const S = B.summary;
+  $("boomDesc").innerHTML = `Big games (${S.boom}+ points) happen in ${pct(S.base_boom)} of D/ST games and ${S.smash}+ in ${pct(S.base_smash)}, ` +
+    `so an average projection never calls them. Checked against all ${S.games.toLocaleString()} D/ST games in ${S.seasons.join(", ")}, using only what was known before kickoff, ` +
+    `<b>the opponent's implied points from the betting line</b> was the clearest sign: <b>${pct(S.smash_low_implied_share)}</b> of ${S.smash}+ games came against an opponent implied for 19.5 or fewer, ` +
+    `though only ${pct(S.low_implied_share)} of games look like that. Backup quarterbacks, turnover-prone and sack-prone offenses do come before big games, ` +
+    `but the line already prices them in, so adding them on top made predictions on unseen seasons worse. They're shown as boom signs.`;
+  makeTable($("boomBuckets"), [
+    {key: "implied", label: "Opp implied", l: 1},
+    {key: "games", label: "Games", fmt: f(0)},
+    {key: "avg", label: "Avg D/ST", fmt: f(1)},
+    {key: "boom", label: `${S.boom}+`, fmt: v => `<b>${pct(v)}</b>`},
+    {key: "smash", label: `${S.smash}+`, fmt: pct},
+  ], () => B.buckets, {});
+  $("boomNote").innerHTML = `<b>Backtest.</b> Each season predicted by a model fitted on the other seasons: the top 10% of boom odds hit ${S.boom}+ points ` +
+    `<b>${pct(S.top10_hit)}</b> of the time (vs ${pct(S.base_boom)} overall), the bottom half only ${pct(S.bottom50_hit)}. ` +
+    `Ranking quality (AUC) ${S.auc.toFixed(2)}, where 0.5 is a coin flip. Boom odds still top out near 25%: even the best setups bust about three times in four.`;
+  $("boomHistTitle").textContent = `Every ${S.smash}+ point D/ST game since ${S.seasons[0]} (${B.history.length})`;
+  makeTable($("boomHist"), [
+    {key: "season", label: "Season"},
+    {key: "week", label: "Wk"},
+    {key: "defense", label: "Defense", l: 1, fmt: (v, r) => `<b>${esc(v)}</b> vs ${esc(r.offense)}`},
+    {key: "dst_fp", label: "Pts", fmt: v => `<b>${v.toFixed(0)}</b>`},
+    {key: "opp_implied", label: "Opp implied", fmt: f(1)},
+    {key: "implied_pct", label: "Lower than", fmt: v => pct(1 - v), title: "Share of all games where the opponent was implied for more points (how unusual the line was)"},
+    {key: "opp_qb", label: "Opp QB", l: 1},
+    {key: "flags", label: "Boom signs", l: 1, fmt: v => (v || []).map(t => `<span class="chip warn">${esc(t)}</span>`).join("")},
+  ], () => B.history, {});
 })();
 
 // ---------- 5.9 rankings ----------
