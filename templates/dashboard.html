@@ -24,7 +24,6 @@
   --bad: #c0362c;  --bad-bg: #fbe7e5;
   --neutral-bg: #f0efec;
   --warn: #9a6200; --warn-bg: #fbf0d9;
-  --div-lo: #2a78d6; --div-hi: #e34948;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -35,7 +34,6 @@
     --pos-qb: #3987e5; --pos-rb: #d95926; --pos-wr: #199e70; --pos-te: #9085e9;
     --good: #5cc275; --good-bg: #173a22; --bad: #ff7b72; --bad-bg: #44201d; --neutral-bg: #383835;
     --warn: #e0a940; --warn-bg: #3d2e10;
-    --div-lo: #3987e5; --div-hi: #e66767;
   }
 }
 :root[data-theme="dark"] {
@@ -46,7 +44,6 @@
   --pos-qb: #3987e5; --pos-rb: #d95926; --pos-wr: #199e70; --pos-te: #9085e9;
   --good: #5cc275; --good-bg: #173a22; --bad: #ff7b72; --bad-bg: #44201d; --neutral-bg: #383835;
     --warn: #e0a940; --warn-bg: #3d2e10;
-  --div-lo: #3987e5; --div-hi: #e66767;
 }
 * { box-sizing: border-box; }
 body {
@@ -459,13 +456,16 @@ $("meta").textContent = `${META.season} season · data through week ${META.throu
   $("updated").title = "When the data on this page was last rebuilt from nflverse";
 })();
 
-// Diverging chip for a 1..32 defensive rank (1 = stingy/blue, 32 = generous/red).
-// Offense rank (1 = best offense): colored from the defense's side, so a weak offense reads blue.
-const rankCellOff = r => r == null ? rankCell(r) : rankCell(33 - r).replace(/>\d+</, `>${r}<`);
+// Matchup-toughness chip for a 1..32 rank: 1 = hardest matchup (red), 32 = easiest (green).
+// Used for opponent ranks everywhere (a stingy defense for your players, a strong offense for your D/ST).
+// A unit's own strength rank (1 = best): green when strong. Used for your D/ST's own defense ranks.
+const rankCellStrength = r => r == null ? rankCell(r) : rankCell(33 - r).replace(/>\d+</, `>${r}<`);
+// Rank with no good/bad side (scheme tendencies such as blitz rate): plain.
+const rankCellPlain = r => r == null ? rankCell(r) : `<span class="rank-cell">${r}</span>`;
 function rankCell(r) {
   if (r == null) return '<span class="muted">—</span>';
   const t = (r - 16.5) / 15.5; // -1..1
-  const c = t < 0 ? "--div-lo" : "--div-hi";
+  const c = t < 0 ? "--bad" : "--good";
   const a = Math.round(Math.abs(t) * 55);
   return `<span class="rank-cell" style="background:color-mix(in srgb, var(${c}) ${a}%, transparent)">${r}</span>`;
 }
@@ -1071,14 +1071,14 @@ $("rbMineOnly").onchange = () => { drawChart("rbChart"); renderRb(); };
      title: "Expected yards allowed in this game (pass/rush): opponent yards/G + defense yards allowed/G − league average"},
     {key: "matchup_epa", label: "Opp EPA/play", fmt: epa, title: "Expected opponent EPA/play in this game, pass and run weighted by the opponent's pass rate (lower is better for the defense)"},
     {key: "opp_pass_rate", label: "Opp pass %", fmt: v => (v * 100).toFixed(0) + "%", title: "Opponent's dropback rate in neutral game script (win probability 20–80%)"},
-    {key: "def_pass_rank", label: "D pass", fmt: (v, r) => `${rankCell(v)} <span class="muted">${epa(r.def_pass_epa)}</span>`, title: "Defense's pass EPA/play allowed and its rank (1 = best)"},
-    {key: "def_rush_rank", label: "D run", fmt: (v, r) => `${rankCell(v)} <span class="muted">${epa(r.def_rush_epa)}</span>`, title: "Defense's rush EPA/play allowed and its rank (1 = best)"},
-    {key: "def_pass_yds_rank", label: "D pass yds", fmt: (v, r) => `${rankCell(v)} <span class="muted">${r.def_pass_ypg.toFixed(0)}</span>`, title: "Passing yards allowed per game and rank (1 = fewest)"},
-    {key: "def_rush_yds_rank", label: "D run yds", fmt: (v, r) => `${rankCell(v)} <span class="muted">${r.def_rush_ypg.toFixed(0)}</span>`, title: "Rushing yards allowed per game and rank (1 = fewest)"},
-    {key: "opp_pass_rank", label: "Opp pass O", fmt: (v, r) => `${rankCellOff(v)} <span class="muted">${epa(r.opp_pass_epa)}</span>`, title: "Opponent's pass EPA/play and rank (1 = best offense; blue = weak offense, good for the defense)"},
-    {key: "opp_rush_rank", label: "Opp run O", fmt: (v, r) => `${rankCellOff(v)} <span class="muted">${epa(r.opp_rush_epa)}</span>`, title: "Opponent's rush EPA/play and rank (1 = best offense; blue = weak offense, good for the defense)"},
-    {key: "opp_pass_yds_rank", label: "Opp pass yds", fmt: (v, r) => `${rankCellOff(v)} <span class="muted">${r.opp_pass_ypg.toFixed(0)}</span>`, title: "Opponent's passing yards per game and rank (1 = most; blue = low-yardage offense)"},
-    {key: "opp_rush_yds_rank", label: "Opp run yds", fmt: (v, r) => `${rankCellOff(v)} <span class="muted">${r.opp_rush_ypg.toFixed(0)}</span>`, title: "Opponent's rushing yards per game and rank (1 = most; blue = low-yardage offense)"},
+    {key: "def_pass_rank", label: "D pass", fmt: (v, r) => `${rankCellStrength(v)} <span class="muted">${epa(r.def_pass_epa)}</span>`, title: "Defense's pass EPA/play allowed and its rank (1 = best; green = a strength for your D/ST)"},
+    {key: "def_rush_rank", label: "D run", fmt: (v, r) => `${rankCellStrength(v)} <span class="muted">${epa(r.def_rush_epa)}</span>`, title: "Defense's rush EPA/play allowed and its rank (1 = best; green = a strength for your D/ST)"},
+    {key: "def_pass_yds_rank", label: "D pass yds", fmt: (v, r) => `${rankCellStrength(v)} <span class="muted">${r.def_pass_ypg.toFixed(0)}</span>`, title: "Passing yards allowed per game and rank (1 = fewest; green = a strength)"},
+    {key: "def_rush_yds_rank", label: "D run yds", fmt: (v, r) => `${rankCellStrength(v)} <span class="muted">${r.def_rush_ypg.toFixed(0)}</span>`, title: "Rushing yards allowed per game and rank (1 = fewest; green = a strength)"},
+    {key: "opp_pass_rank", label: "Opp pass O", fmt: (v, r) => `${rankCell(v)} <span class="muted">${epa(r.opp_pass_epa)}</span>`, title: "Opponent's pass EPA/play and rank (1 = best offense = hardest matchup (red); green = weak offense, an easy matchup)"},
+    {key: "opp_rush_rank", label: "Opp run O", fmt: (v, r) => `${rankCell(v)} <span class="muted">${epa(r.opp_rush_epa)}</span>`, title: "Opponent's rush EPA/play and rank (1 = best offense = hardest matchup (red); green = weak offense, an easy matchup)"},
+    {key: "opp_pass_yds_rank", label: "Opp pass yds", fmt: (v, r) => `${rankCell(v)} <span class="muted">${r.opp_pass_ypg.toFixed(0)}</span>`, title: "Opponent's passing yards per game and rank (1 = most = hardest matchup (red); green = low-yardage offense)"},
+    {key: "opp_rush_yds_rank", label: "Opp run yds", fmt: (v, r) => `${rankCell(v)} <span class="muted">${r.opp_rush_ypg.toFixed(0)}</span>`, title: "Opponent's rushing yards per game and rank (1 = most = hardest matchup (red); green = low-yardage offense)"},
     {key: "def_dst_pg", label: "D pts/G", fmt: f(1), title: "D/ST points this defense scores per game"},
     {key: "opp_dst_allowed_pg", label: "Opp allows/G", fmt: f(1), title: "D/ST points this opponent gives up per game"},
     {key: "sack_edge", label: "Sack %", fmt: v => (v * 100).toFixed(1) + "%", title: "Average of the defense's sack rate and the opponent's sack rate allowed"},
@@ -1136,7 +1136,9 @@ $("rbMineOnly").onchange = () => { drawChart("rbChart"); renderRb(); };
     // matrix
     const cell = (d, o) => STY.cells.find(c => c.d === d && c.o === o);
     const avgs = STY.cells.map(c => c.avg), lo = Math.min(...avgs), hi = Math.max(...avgs);
-    const heat = v => `background:color-mix(in srgb, var(--div-lo) ${Math.round((v - lo) / (hi - lo) * 55)}%, transparent)`;
+    // Green = easier matchup for the D/ST (more points), red = harder.
+    const heat = v => { const t = (v - (lo + hi) / 2) / ((hi - lo) / 2);
+      return `background:color-mix(in srgb, var(${t >= 0 ? "--good" : "--bad"}) ${Math.round(Math.abs(t) * 45)}%, transparent)`; };
     const ids = [...Array(STY.k).keys()].map(i => i + 1);
     $("styMatrix").innerHTML = `<thead><tr><th class="l">Defense style ↓ · Offense style →</th>${ids.map(o => `<th title="${esc(ON[o])}">O${o}<span class="sub" style="font-weight:400">${esc(ON[o])}</span></th>`).join("")}</tr></thead><tbody>` +
       ids.map(d => `<tr><th class="l">D${d} <span class="muted" style="font-weight:400">${esc(DN[d])}</span></th>` + ids.map(o => {
@@ -1199,8 +1201,10 @@ $("rbMineOnly").onchange = () => { drawChart("rbChart"); renderRb(); };
     </div>`).join("");
   let cluFilter = "All";
   $("cluFilter").innerHTML = ["All", ...CLU.clusters.map(c => String(c.id))].map((v, i) => `<button data-v="${v}" class="${i ? "" : "on"}">${v === "All" ? "All" : "Cluster " + v}</button>`).join("");
-  const statCol = k => ({key: k, label: FEAT[k].label, fmt: (v, r) => `${rankCell(r[k + "_rank"])} <span class="muted">${fmtv(k, v)}</span>`,
-    title: FEAT[k].higher_better == null ? "Scheme tendency (rank 1 = highest)" : "Rank 1 = best for the defense" + (FEAT[k].extra ? "; small sample, not used for clustering" : "")});
+  const statCol = k => ({key: k, label: FEAT[k].label,
+    fmt: (v, r) => `${(FEAT[k].higher_better == null ? rankCellPlain : rankCell)(r[k + "_rank"])} <span class="muted">${fmtv(k, v)}</span>`,
+    title: FEAT[k].higher_better == null ? "Scheme tendency (rank 1 = highest; no better or worse)"
+      : "Rank 1 = best defense at this = hardest matchup for opposing offenses (red); 32 = easiest (green)" + (FEAT[k].extra ? "; small sample, not used for clustering" : "")});
   const renderClu = makeTable($("cluTbl"), [
     {key: "team", label: "Defense", l: 1, fmt: v => `<b>${esc(v)}</b> <span class="muted">${esc((TEAMS[v] || {}).name || "")}</span>`},
     {key: "cluster", label: "Cluster", fmt: v => `<span class="clu-dot" style="--c:var(${cvar(v)})"></span>${v}`},
