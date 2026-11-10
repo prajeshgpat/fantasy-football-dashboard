@@ -164,6 +164,9 @@ button.chip.sig:hover { filter: brightness(0.95); text-decoration: underline; }
 .clu-card .teams span { font-size: 12px; padding: 1px 6px; border-radius: 4px; background: color-mix(in srgb, var(--c) 18%, transparent); }
 .clu-card dl { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; margin: 6px 0 0; font-size: 12px; color: var(--text-2); }
 .clu-card dd { margin: 0; text-align: right; color: var(--text); font-variant-numeric: tabular-nums; }
+.sty-matrix td, .sty-matrix th { text-align: center; }
+.sty-matrix th.l, .sty-matrix td.l { text-align: left; max-width: 240px; white-space: normal; }
+.sty-matrix td .sub { display: block; font-size: 11px; color: var(--text-2); }
 .clu-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--c); margin-right: 4px; vertical-align: -1px; }
 .muted { color: var(--text-3); }
 .tier-row td { background: var(--surface-2); font-weight: 600; text-align: left; color: var(--text-2); font-size: 12px; }
@@ -342,6 +345,19 @@ details.note[open] summary { margin-bottom: 4px; }
   </div>
   <h3 id="boomHistTitle">Every 20+ point D/ST game</h3>
   <div class="tbl-wrap" style="max-height:480px"><table id="boomHist"></table></div>
+  <div id="stySection" hidden>
+    <h3 id="styTitle">Style vs. style: does the matchup matter?</h3>
+    <p class="desc" id="styDesc"></p>
+    <div class="note" id="styVerdict"></div>
+    <h4>Average D/ST points (boom rate) by defense style × offense style</h4>
+    <div class="tbl-wrap"><table id="styMatrix" class="sty-matrix"></table></div>
+    <div class="grid2">
+      <div><h4>Backtest: predicting each season from earlier seasons only</h4><div class="tbl-wrap"><table id="styBacktest"></table></div></div>
+      <div><h4>Specific style matchups, beyond each unit's overall quality</h4><div class="tbl-wrap"><table id="styPairs"></table></div></div>
+    </div>
+    <h4>Teams by current style</h4>
+    <div class="clu-cards" id="styTeams"></div>
+  </div>
 </section>
 
 <section id="clusters" role="tabpanel" hidden>
@@ -395,6 +411,7 @@ const RYOE = {{RYOE_DATA}};
 const RB_EFF = {{RB_EFF_DATA}};
 const DST = {{DST_DATA}};
 const CLU = {{CLUSTER_DATA}};
+const STY = {{STYLE_DATA}};
 const RANKS = {{RANKINGS_DATA}};
 const GAPS = {{GAPS_DATA}};
 </script>
@@ -992,6 +1009,11 @@ $("rbMineOnly").onchange = () => { drawChart("rbChart"); renderRb(); };
 // ---------- D/ST matchups ----------
 (() => {
   const L = DST.league, B = DST.boom;
+  const STY_CELL = STY ? Object.fromEntries(STY.cells.map(c => [`${c.d}-${c.o}`, c])) : {};
+  if (STY) DST.rows.forEach(r => {
+    const d = (STY.teams[r.defense] || {}).d, o = (STY.teams[r.opp] || {}).o, c = STY_CELL[`${d}-${o}`];
+    Object.assign(r, {d_style: d ?? null, o_style: o ?? null, style_avg: c ? c.avg : null, style_boom: c ? c.boom : null});
+  });
   const pct = v => (v * 100).toFixed(v < 0.1 ? 1 : 0) + "%";
   $("dstTitle").textContent = `Best D/ST Matchups${DST.week ? " — Week " + DST.week : ""}`;
   $("dstPrior").textContent = DST.prior_games;
@@ -1038,6 +1060,9 @@ $("rbMineOnly").onchange = () => { drawChart("rbChart"); renderRb(); };
      title: "Opponent's implied points from the betting line (total ÷ 2 ± spread ÷ 2): the strongest single boom signal"},
     {key: "flags", label: "Boom signs", l: 1, fmt: v => (v || []).map(t => `<span class="chip warn">${esc(t)}</span>`).join(""),
      title: "Backup/new opposing QB, turnover-prone or sack-prone opponent (already reflected in the line, shown as the why)"},
+    ...(STY ? [{key: "style_avg", label: "Style matchup", l: 1, fmt: (v, r) => r.d_style == null ? '<span class="muted">—</span>'
+        : `D${r.d_style} vs O${r.o_style} <span class="muted">${v.toFixed(1)} pts · ${pct(r.style_boom)} boom</span>`,
+       title: "This defense's current style vs the opponent's offense style, and how that pairing has scored historically (20 seasons). See the style section below"}] : []),
     {key: "results", label: "Results", fmt: f(1), title: "Defense D/ST pts/G + opponent D/ST pts allowed/G − league average"},
     {key: "line_proj", label: "Line proj", fmt: f(1), title: "D/ST points implied by the opponent's implied points (betting line)"},
     {key: "epa_proj", label: "EPA proj", fmt: f(1), title: "D/ST points implied by the expected opponent EPA/play"},
@@ -1088,6 +1113,53 @@ $("rbMineOnly").onchange = () => { drawChart("rbChart"); renderRb(); };
     {key: "opp_qb", label: "Opp QB", l: 1},
     {key: "flags", label: "Boom signs", l: 1, fmt: v => (v || []).map(t => `<span class="chip warn">${esc(t)}</span>`).join("")},
   ], () => B.history, {});
+
+  // ---- style vs style (20 seasons) ----
+  if (STY) {
+    $("stySection").hidden = false;
+    const DN = Object.fromEntries(STY.clusters.defense.map(c => [c.id, c.name]));
+    const ON = Object.fromEntries(STY.clusters.offense.map(c => [c.id, c.name]));
+    const BT = STY.backtest, seasons = STY.backtest_seasons;
+    const RS = "Ranking-site: D/ST pts opponent allowed so far";
+    $("styTitle").textContent = `Style vs. style: ${STY.first_season}–${STY.last_season} (${STY.games.toLocaleString()} D/ST games)`;
+    $("styDesc").innerHTML = `Ranking sites mostly rate a matchup by the D/ST points defenses have scored against an offense so far, which a soft or tough early schedule skews. ` +
+      `This compares like with like: every team's stats are <b>adjusted for the opponents it faced</b>, <b>standardized within each season</b> (a 2008 defense against 2008, not today's passing era), ` +
+      `and grouped by k-means into ${STY.k} defense styles and ${STY.k} offense styles. Every game uses each team's style <b>as known before kickoff</b> ` +
+      `(season to date blended with last season as ${STY.prior_games} games), so a team that changes mid-season changes style when it actually does.`;
+    const corr = m => BT[m] ? BT[m].corr.toFixed(3) : "—";
+    $("styVerdict").innerHTML = `<b>What 20 seasons say.</b> Styles separate D/ST outcomes strongly by overall quality: an elite defense facing a weak offense averages ` +
+      `<b>${STY.cells.find(c => c.d === 1 && c.o === 4).avg.toFixed(1)}</b> points, a weak defense facing an elite offense <b>${STY.cells.find(c => c.d === 4 && c.o === 1).avg.toFixed(1)}</b>. ` +
+      `But the <b>specific pairing</b> adds nothing beyond that: the full ${STY.k}×${STY.k} matrix predicts no better than "good defense + bad offense" ` +
+      `(correlation ${corr("Style matchup matrix")} vs ${corr("Style clusters, no matchup effect (additive)")}), no cell differs from that expectation by more than chance, ` +
+      `and the targeted style matchups below are all within noise. Style clusters do beat the ranking-site number (${corr("Style matchup matrix")} vs ${corr(RS)}), ` +
+      `schedule-adjusting that number helps only a little (${corr("Same, schedule-adjusted")}), and the betting line stays best (${corr("Betting line")}), with the matrix adding nothing on top.`;
+    // matrix
+    const cell = (d, o) => STY.cells.find(c => c.d === d && c.o === o);
+    const avgs = STY.cells.map(c => c.avg), lo = Math.min(...avgs), hi = Math.max(...avgs);
+    const heat = v => `background:color-mix(in srgb, var(--div-lo) ${Math.round((v - lo) / (hi - lo) * 55)}%, transparent)`;
+    const ids = [...Array(STY.k).keys()].map(i => i + 1);
+    $("styMatrix").innerHTML = `<thead><tr><th class="l">Defense style ↓ · Offense style →</th>${ids.map(o => `<th title="${esc(ON[o])}">O${o}<span class="sub" style="font-weight:400">${esc(ON[o])}</span></th>`).join("")}</tr></thead><tbody>` +
+      ids.map(d => `<tr><th class="l">D${d} <span class="muted" style="font-weight:400">${esc(DN[d])}</span></th>` + ids.map(o => {
+        const c = cell(d, o);
+        return `<td style="${heat(c.avg)}" title="${c.games} games · ${c.vs_additive >= 0 ? "+" : ""}${c.vs_additive.toFixed(2)} vs good-vs-bad expectation (±${(2 * c.se).toFixed(2)} is noise)"><b>${c.avg.toFixed(1)}</b><span class="sub">${pct(c.boom)} boom · ${c.games} g</span></td>`;
+      }).join("") + "</tr>").join("") + "</tbody>";
+    makeTable($("styBacktest"), [
+      {key: "model", label: "Method", l: 1},
+      {key: "corr", label: "Corr", fmt: f(3), title: "Correlation with actual D/ST points"},
+      {key: "boom_auc", label: "Boom AUC", fmt: f(3), title: `How well it ranks ${STY.boom}+ point games (0.5 = coin flip)`},
+      {key: "top10_boom", label: "Top 10% boom", fmt: pct, title: `${STY.boom}+ rate among the top 10% of predictions`},
+    ], () => Object.entries(BT).map(([model, r]) => ({model, ...r})), {sortKey: "corr"});
+    makeTable($("styPairs"), [
+      {key: "pair", label: "Matchup", l: 1},
+      {key: "effect", label: "Pts per 1×1 SD", fmt: signed(2), title: "Extra D/ST points when the defense is 1 SD strong at this and the offense 1 SD weak at it, controlling for both full profiles"},
+      {key: "t", label: "t", fmt: signed(1), title: "Effect ÷ standard error: beyond ±2 would be a real signal"},
+      {key: "holdout_corr_gain", label: "Holdout gain", fmt: v => (v >= 0 ? "+" : "") + v.toFixed(4), title: "Change in correlation on later seasons when added"},
+    ], () => STY.style_pairs, {});
+    const byStyle = (side, key) => ids.map(i => Object.entries(STY.teams).filter(([, t]) => t[key] === i).map(([team]) => team));
+    const dT = byStyle("defense", "d"), oT = byStyle("offense", "o");
+    $("styTeams").innerHTML = ids.map(i => `<div class="clu-card" style="--c:var(--pos-qb)"><h4>D${i}: ${esc(DN[i])}</h4><div class="teams">${dT[i - 1].map(t => `<span>${t}</span>`).join("") || '<span class="muted">none</span>'}</div></div>`).join("") +
+      ids.map(i => `<div class="clu-card" style="--c:var(--pos-rb)"><h4>O${i}: ${esc(ON[i])}</h4><div class="teams">${oT[i - 1].map(t => `<span>${t}</span>`).join("") || '<span class="muted">none</span>'}</div></div>`).join("");
+  }
 })();
 
 // ---------- defense clusters ----------

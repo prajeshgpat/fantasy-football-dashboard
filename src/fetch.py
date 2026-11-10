@@ -92,7 +92,12 @@ def load_roster(year: int) -> pd.DataFrame:
 
 
 def load_schedule() -> pd.DataFrame:
-    return pd.read_csv(_download("schedules", "games.csv"), low_memory=False)
+    """All games. Relocated teams use today's abbreviations (OAK->LV, SD->LAC, STL->LA),
+    matching play-by-play, so older seasons line up."""
+    g = pd.read_csv(_download("schedules", "games.csv"), low_memory=False)
+    for c in ("home_team", "away_team"):
+        g[c] = g[c].replace(TEAM_ALIASES)
+    return g
 
 
 def load_ngs(kind: str) -> pd.DataFrame:

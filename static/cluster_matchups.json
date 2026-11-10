@@ -1,0 +1,639 @@
+{
+ "first_season": 2006,
+ "last_season": 2025,
+ "k": 4,
+ "boom": 15,
+ "prior_games": 4,
+ "z_cap": 2.0,
+ "games": 10398,
+ "centroids": {
+  "defense": {
+   "features": [
+    "pass_epa_pp",
+    "rush_epa_pp",
+    "success_rate",
+    "sack_rate",
+    "hit_rate",
+    "takeaway_rate",
+    "exp_pass_rate",
+    "exp_run_rate",
+    "stuff_rate",
+    "third_rate"
+   ],
+   "centroids": [
+    [
+     -1.1099,
+     -0.8545,
+     -1.1005,
+     0.7355,
+     0.7555,
+     0.692,
+     -0.6354,
+     -0.5092,
+     0.3952,
+     -0.8674
+    ],
+    [
+     0.2104,
+     -0.5185,
+     -0.0228,
+     -0.3099,
+     -0.3194,
+     -0.1863,
+     -0.134,
+     -0.4582,
+     0.4029,
+     0.1361
+    ],
+    [
+     -0.1355,
+     0.7193,
+     0.1431,
+     0.4203,
+     0.3547,
+     -0.0749,
+     0.1142,
+     0.688,
+     -0.3045,
+     -0.2842
+    ],
+    [
+     1.0033,
+     0.8185,
+     1.0146,
+     -0.7832,
+     -0.7432,
+     -0.4476,
+     0.6658,
+     0.3914,
+     -0.624,
+     0.9803
+    ]
+   ],
+   "team_seasons": 672
+  },
+  "offense": {
+   "features": [
+    "pass_epa_pp",
+    "rush_epa_pp",
+    "success_rate",
+    "pass_rate",
+    "sack_rate",
+    "takeaway_rate",
+    "exp_pass_rate",
+    "exp_run_rate",
+    "third_rate"
+   ],
+   "centroids": [
+    [
+     1.2848,
+     0.6992,
+     1.2182,
+     0.6245,
+     -0.8418,
+     -0.7281,
+     0.873,
+     0.2064,
+     1.1726
+    ],
+    [
+     0.1859,
+     0.8109,
+     0.2366,
+     -0.6986,
+     0.0757,
+     -0.3589,
+     0.206,
+     0.7799,
+     0.1526
+    ],
+    [
+     0.1319,
+     -0.6018,
+     0.0401,
+     0.6718,
+     -0.2978,
+     0.0711,
+     0.0119,
+     -0.5845,
+     0.1197
+    ],
+    [
+     -1.0574,
+     -0.6184,
+     -0.9923,
+     -0.3459,
+     0.6752,
+     0.6667,
+     -0.7368,
+     -0.31,
+     -0.9643
+    ]
+   ],
+   "team_seasons": 672
+  }
+ },
+ "features": {
+  "defense": {
+   "pass_epa_pp": [
+    "Dropback EPA allowed",
+    false
+   ],
+   "rush_epa_pp": [
+    "Rush EPA allowed",
+    false
+   ],
+   "success_rate": [
+    "Success rate allowed",
+    false
+   ],
+   "sack_rate": [
+    "Sack rate",
+    true
+   ],
+   "hit_rate": [
+    "Pressure (sack/QB hit) rate",
+    true
+   ],
+   "takeaway_rate": [
+    "Takeaways per 100 plays",
+    true
+   ],
+   "exp_pass_rate": [
+    "20+ yd passes allowed",
+    false
+   ],
+   "exp_run_rate": [
+    "10+ yd runs allowed",
+    false
+   ],
+   "stuff_rate": [
+    "Run stuff rate",
+    true
+   ],
+   "third_rate": [
+    "3rd-down conv. allowed",
+    false
+   ]
+  },
+  "offense": {
+   "pass_epa_pp": [
+    "Dropback EPA",
+    true
+   ],
+   "rush_epa_pp": [
+    "Rush EPA",
+    true
+   ],
+   "success_rate": [
+    "Success rate",
+    true
+   ],
+   "pass_rate": [
+    "Neutral pass rate",
+    null
+   ],
+   "sack_rate": [
+    "Sack rate taken",
+    false
+   ],
+   "takeaway_rate": [
+    "Giveaways per 100 plays",
+    false
+   ],
+   "exp_pass_rate": [
+    "20+ yd pass rate",
+    true
+   ],
+   "exp_run_rate": [
+    "10+ yd run rate",
+    true
+   ],
+   "third_rate": [
+    "3rd-down conv.",
+    true
+   ]
+  }
+ },
+ "clusters": {
+  "defense": [
+   {
+    "id": 1,
+    "name": "Elite D: best at stopping the pass, worst at stuffing runs",
+    "profile": {
+     "pass_epa_pp": -1.11,
+     "rush_epa_pp": -0.85,
+     "success_rate": -1.1,
+     "sack_rate": 0.74,
+     "hit_rate": 0.76,
+     "takeaway_rate": 0.69,
+     "exp_pass_rate": -0.64,
+     "exp_run_rate": -0.51,
+     "stuff_rate": 0.4,
+     "third_rate": -0.87
+    },
+    "team_games": 2550
+   },
+   {
+    "id": 2,
+    "name": "Above average D: best at stopping the run, worst at pressure",
+    "profile": {
+     "pass_epa_pp": 0.21,
+     "rush_epa_pp": -0.52,
+     "success_rate": -0.02,
+     "sack_rate": -0.31,
+     "hit_rate": -0.32,
+     "takeaway_rate": -0.19,
+     "exp_pass_rate": -0.13,
+     "exp_run_rate": -0.46,
+     "stuff_rate": 0.4,
+     "third_rate": 0.14
+    },
+    "team_games": 2794
+   },
+   {
+    "id": 3,
+    "name": "Below average D: best at sacks, worst at stopping the run",
+    "profile": {
+     "pass_epa_pp": -0.14,
+     "rush_epa_pp": 0.72,
+     "success_rate": 0.14,
+     "sack_rate": 0.42,
+     "hit_rate": 0.35,
+     "takeaway_rate": -0.07,
+     "exp_pass_rate": 0.11,
+     "exp_run_rate": 0.69,
+     "stuff_rate": -0.3,
+     "third_rate": -0.28
+    },
+    "team_games": 2503
+   },
+   {
+    "id": 4,
+    "name": "Weak D: best at limiting big runs, worst at winning downs",
+    "profile": {
+     "pass_epa_pp": 1.0,
+     "rush_epa_pp": 0.82,
+     "success_rate": 1.01,
+     "sack_rate": -0.78,
+     "hit_rate": -0.74,
+     "takeaway_rate": -0.45,
+     "exp_pass_rate": 0.67,
+     "exp_run_rate": 0.39,
+     "stuff_rate": -0.62,
+     "third_rate": 0.98
+    },
+    "team_games": 2551
+   }
+  ],
+  "offense": [
+   {
+    "id": 1,
+    "name": "Elite O: best at passing, worst at big runs (pass-heavy)",
+    "profile": {
+     "pass_epa_pp": 1.28,
+     "rush_epa_pp": 0.7,
+     "success_rate": 1.22,
+     "pass_rate": 0.62,
+     "sack_rate": -0.84,
+     "takeaway_rate": -0.73,
+     "exp_pass_rate": 0.87,
+     "exp_run_rate": 0.21,
+     "third_rate": 1.17
+    },
+    "team_games": 2034
+   },
+   {
+    "id": 2,
+    "name": "Above average O: best at running, worst at avoiding sacks (run-heavy)",
+    "profile": {
+     "pass_epa_pp": 0.19,
+     "rush_epa_pp": 0.81,
+     "success_rate": 0.24,
+     "pass_rate": -0.7,
+     "sack_rate": 0.08,
+     "takeaway_rate": -0.36,
+     "exp_pass_rate": 0.21,
+     "exp_run_rate": 0.78,
+     "third_rate": 0.15
+    },
+    "team_games": 2601
+   },
+   {
+    "id": 3,
+    "name": "Below average O: best at avoiding sacks, worst at running (pass-heavy)",
+    "profile": {
+     "pass_epa_pp": 0.13,
+     "rush_epa_pp": -0.6,
+     "success_rate": 0.04,
+     "pass_rate": 0.67,
+     "sack_rate": -0.3,
+     "takeaway_rate": 0.07,
+     "exp_pass_rate": 0.01,
+     "exp_run_rate": -0.58,
+     "third_rate": 0.12
+    },
+    "team_games": 2617
+   },
+   {
+    "id": 4,
+    "name": "Weak O: best at big runs, worst at passing",
+    "profile": {
+     "pass_epa_pp": -1.06,
+     "rush_epa_pp": -0.62,
+     "success_rate": -0.99,
+     "pass_rate": -0.35,
+     "sack_rate": 0.68,
+     "takeaway_rate": 0.67,
+     "exp_pass_rate": -0.74,
+     "exp_run_rate": -0.31,
+     "third_rate": -0.96
+    },
+    "team_games": 3146
+   }
+  ]
+ },
+ "cells": [
+  {
+   "d": 1,
+   "o": 1,
+   "games": 545,
+   "avg": 5.2,
+   "boom": 0.103,
+   "bust": 0.255,
+   "vs_additive": -0.21,
+   "se": 0.31
+  },
+  {
+   "d": 1,
+   "o": 2,
+   "games": 617,
+   "avg": 7.51,
+   "boom": 0.149,
+   "bust": 0.147,
+   "vs_additive": 0.35,
+   "se": 0.28
+  },
+  {
+   "d": 1,
+   "o": 3,
+   "games": 635,
+   "avg": 7.7,
+   "boom": 0.161,
+   "bust": 0.123,
+   "vs_additive": 0.05,
+   "se": 0.27
+  },
+  {
+   "d": 1,
+   "o": 4,
+   "games": 753,
+   "avg": 9.51,
+   "boom": 0.22,
+   "bust": 0.066,
+   "vs_additive": -0.18,
+   "se": 0.25
+  },
+  {
+   "d": 2,
+   "o": 1,
+   "games": 511,
+   "avg": 3.9,
+   "boom": 0.057,
+   "bust": 0.307,
+   "vs_additive": -0.09,
+   "se": 0.29
+  },
+  {
+   "d": 2,
+   "o": 2,
+   "games": 714,
+   "avg": 5.62,
+   "boom": 0.091,
+   "bust": 0.211,
+   "vs_additive": -0.11,
+   "se": 0.25
+  },
+  {
+   "d": 2,
+   "o": 3,
+   "games": 706,
+   "avg": 6.27,
+   "boom": 0.115,
+   "bust": 0.181,
+   "vs_additive": 0.05,
+   "se": 0.26
+  },
+  {
+   "d": 2,
+   "o": 4,
+   "games": 863,
+   "avg": 8.37,
+   "boom": 0.174,
+   "bust": 0.103,
+   "vs_additive": 0.1,
+   "se": 0.23
+  },
+  {
+   "d": 3,
+   "o": 1,
+   "games": 500,
+   "avg": 3.77,
+   "boom": 0.07,
+   "bust": 0.314,
+   "vs_additive": -0.07,
+   "se": 0.3
+  },
+  {
+   "d": 3,
+   "o": 2,
+   "games": 648,
+   "avg": 5.28,
+   "boom": 0.113,
+   "bust": 0.239,
+   "vs_additive": -0.3,
+   "se": 0.26
+  },
+  {
+   "d": 3,
+   "o": 3,
+   "games": 604,
+   "avg": 6.32,
+   "boom": 0.126,
+   "bust": 0.195,
+   "vs_additive": 0.26,
+   "se": 0.28
+  },
+  {
+   "d": 3,
+   "o": 4,
+   "games": 751,
+   "avg": 8.21,
+   "boom": 0.153,
+   "bust": 0.099,
+   "vs_additive": 0.1,
+   "se": 0.23
+  },
+  {
+   "d": 4,
+   "o": 1,
+   "games": 478,
+   "avg": 3.22,
+   "boom": 0.052,
+   "bust": 0.377,
+   "vs_additive": 0.41,
+   "se": 0.29
+  },
+  {
+   "d": 4,
+   "o": 2,
+   "games": 622,
+   "avg": 4.64,
+   "boom": 0.068,
+   "bust": 0.281,
+   "vs_additive": 0.09,
+   "se": 0.26
+  },
+  {
+   "d": 4,
+   "o": 3,
+   "games": 672,
+   "avg": 4.7,
+   "boom": 0.071,
+   "bust": 0.241,
+   "vs_additive": -0.34,
+   "se": 0.23
+  },
+  {
+   "d": 4,
+   "o": 4,
+   "games": 779,
+   "avg": 7.05,
+   "boom": 0.145,
+   "bust": 0.16,
+   "vs_additive": -0.03,
+   "se": 0.25
+  }
+ ],
+ "additive": {
+  "mu": 6.3,
+  "defense": {
+   "1": 1.4,
+   "2": -0.02,
+   "3": -0.18,
+   "4": -1.21
+  },
+  "offense": {
+   "1": -2.29,
+   "2": -0.55,
+   "3": -0.06,
+   "4": 1.98
+  }
+ },
+ "backtest": {
+  "Betting line": {
+   "games": 7570.0,
+   "corr": 0.3405,
+   "rmse": 6.3487,
+   "boom_auc": 0.6621,
+   "top10_boom": 0.2174
+  },
+  "Betting line + style matrix": {
+   "games": 7570.0,
+   "corr": 0.3401,
+   "rmse": 6.3519,
+   "boom_auc": 0.6614,
+   "top10_boom": 0.218
+  },
+  "Defense scored + opponent allowed (results)": {
+   "games": 7570.0,
+   "corr": 0.2793,
+   "rmse": 6.6304,
+   "boom_auc": 0.6448,
+   "top10_boom": 0.2032
+  },
+  "Style clusters, no matchup effect (additive)": {
+   "games": 7570.0,
+   "corr": 0.2445,
+   "rmse": 6.5939,
+   "boom_auc": 0.6165,
+   "top10_boom": 0.1665
+  },
+  "Style matchup matrix": {
+   "games": 7570.0,
+   "corr": 0.2426,
+   "rmse": 6.5976,
+   "boom_auc": 0.6162,
+   "top10_boom": 0.1665
+  },
+  "Same, schedule-adjusted": {
+   "games": 7570.0,
+   "corr": 0.2359,
+   "rmse": 6.5918,
+   "boom_auc": 0.6126,
+   "top10_boom": 0.181
+  },
+  "Ranking-site: D/ST pts opponent allowed so far": {
+   "games": 7570.0,
+   "corr": 0.2325,
+   "rmse": 6.6337,
+   "boom_auc": 0.6101,
+   "top10_boom": 0.1784
+  }
+ },
+ "backtest_seasons": [
+  2012,
+  2013,
+  2014,
+  2015,
+  2016,
+  2017,
+  2018,
+  2019,
+  2020,
+  2021,
+  2022,
+  2023,
+  2024,
+  2025,
+  2026
+ ],
+ "style_pairs": [
+  {
+   "pair": "Pressure D vs sack-prone O",
+   "effect": -0.004,
+   "se": 0.07,
+   "t": -0.05,
+   "holdout_corr_gain": -0.0002
+  },
+  {
+   "pair": "Ball-hawking D vs turnover-prone O",
+   "effect": 0.018,
+   "se": 0.068,
+   "t": 0.26,
+   "holdout_corr_gain": -0.0001
+  },
+  {
+   "pair": "Strong pass D vs pass-heavy O",
+   "effect": -0.005,
+   "se": 0.07,
+   "t": -0.08,
+   "holdout_corr_gain": -0.0
+  },
+  {
+   "pair": "Strong run D vs run-heavy O",
+   "effect": 0.053,
+   "se": 0.07,
+   "t": 0.76,
+   "holdout_corr_gain": -0.0001
+  },
+  {
+   "pair": "Big-play-limiting D vs explosive pass O",
+   "effect": 0.056,
+   "se": 0.069,
+   "t": 0.81,
+   "holdout_corr_gain": -0.0015
+  }
+ ],
+ "matrix_beats_additive": false
+}
